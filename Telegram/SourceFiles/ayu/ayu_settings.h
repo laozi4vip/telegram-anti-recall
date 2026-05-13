@@ -273,6 +273,7 @@ public:
 	[[nodiscard]] bool filtersEnabled() const { return _filtersEnabled.current(); }
 	[[nodiscard]] bool filtersEnabledInChats() const { return _filtersEnabledInChats.current(); }
 	[[nodiscard]] bool hideFromBlocked() const { return _hideFromBlocked.current(); }
+	[[nodiscard]] bool keepDeletedMessagesInChat() const { return _keepDeletedMessagesInChat.current(); }
 	[[nodiscard]] bool semiTransparentDeletedMessages() const { return _semiTransparentDeletedMessages.current(); }
 	[[nodiscard]] bool disableAds() const { return _disableAds.current(); }
 	[[nodiscard]] bool disableStories() const { return _disableStories.current(); }
@@ -357,6 +358,7 @@ public:
 	void setFiltersEnabled(bool val);
 	void setFiltersEnabledInChats(bool val);
 	void setHideFromBlocked(bool val);
+	void setKeepDeletedMessagesInChat(bool val);
 	void setSemiTransparentDeletedMessages(bool val);
 	void setDisableAds(bool val);
 	void setDisableStories(bool val);
@@ -449,6 +451,8 @@ public:
 	[[nodiscard]] rpl::producer<bool> filtersEnabledInChatsChanges() const { return _filtersEnabledInChats.changes(); }
 	[[nodiscard]] rpl::producer<bool> hideFromBlockedValue() const { return _hideFromBlocked.value(); }
 	[[nodiscard]] rpl::producer<bool> hideFromBlockedChanges() const { return _hideFromBlocked.changes(); }
+	[[nodiscard]] rpl::producer<bool> keepDeletedMessagesInChatValue() const { return _keepDeletedMessagesInChat.value(); }
+	[[nodiscard]] rpl::producer<bool> keepDeletedMessagesInChatChanges() const { return _keepDeletedMessagesInChat.changes(); }
 	[[nodiscard]] rpl::producer<bool> semiTransparentDeletedMessagesValue() const { return _semiTransparentDeletedMessages.value(); }
 	[[nodiscard]] rpl::producer<bool> semiTransparentDeletedMessagesChanges() const { return _semiTransparentDeletedMessages.changes(); }
 	[[nodiscard]] rpl::producer<bool> disableAdsValue() const { return _disableAds.value(); }
@@ -619,6 +623,7 @@ private:
 	rpl::variable<bool> _filtersEnabled = false;
 	rpl::variable<bool> _filtersEnabledInChats = false;
 	rpl::variable<bool> _hideFromBlocked = false;
+	rpl::variable<bool> _keepDeletedMessagesInChat = false;
 	rpl::variable<bool> _semiTransparentDeletedMessages = false;
 	rpl::variable<bool> _disableAds = true;
 	rpl::variable<bool> _disableStories = false;

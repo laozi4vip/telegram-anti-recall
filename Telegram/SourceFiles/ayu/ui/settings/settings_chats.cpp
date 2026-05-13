@@ -218,6 +218,14 @@ void BuildMarks(
 		.setter = &AyuSettings::setSimpleQuotesAndReplies,
 	});
 
+	// Keep Deleted Messages in Chat toggle
+	ayu.addSettingToggle({
+		.id = u"ayu/keepDeletedMessagesInChat"_q,
+		.title = tr::ayu_KeepDeletedMessagesInChat(),
+		.getter = &AyuSettings::keepDeletedMessagesInChat,
+		.setter = &AyuSettings::setKeepDeletedMessagesInChat,
+	});
+
 	const auto semiTransparent = ayu.addSettingToggle({
 		.id = u"ayu/semiTransparentDeletedMessages"_q,
 		.altIds = { u"ayu/translucentDeletedMessages"_q },

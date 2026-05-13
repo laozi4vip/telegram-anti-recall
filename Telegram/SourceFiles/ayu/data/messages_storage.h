@@ -19,4 +19,6 @@ std::vector<AyuMessageBase> getDeletedMessages(not_null<PeerData*> peer, ID topi
 bool hasDeletedMessages(not_null<PeerData*> peer, ID topicId);
 void clearDeletedMessages(not_null<PeerData*> peer, ID topicId);
 
+void reinjectDeletedMessages(not_null<History*> history);
+
 }

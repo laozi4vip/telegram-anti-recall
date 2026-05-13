@@ -81,6 +81,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 // AyuGram includes
 #include "ayu/ayu_settings.h"
 #include "ayu/ayu_state.h"
+#include "ayu/data/messages_storage.h"
 
 
 namespace {
@@ -1735,6 +1736,9 @@ void History::addOlderSlice(const QVector<MTPMessage> &slice) {
 	if (slice.isEmpty()) {
 		_loadedAtTop = true;
 		checkLocalMessages();
+		// AyuGram: reinject deleted messages even for empty slices
+		// (e.g. when opening a chat with no server messages loaded yet)
+		AyuMessages::reinjectDeletedMessages(this);
 		return;
 	}
 
@@ -1747,10 +1751,13 @@ void History::addOlderSlice(const QVector<MTPMessage> &slice) {
 	}
 	checkLocalMessages();
 	checkLastMessage();
+
+	// AyuGram: reinject deleted messages from database after history slice is loaded
+	AyuMessages::reinjectDeletedMessages(this);
 }
 
 void History::addCreatedOlderSlice(
-		const std::vector<not_null<HistoryItem*>> &items) {
+	const std::vector<not_null<HistoryItem*>> &items) {
 	startBuildingFrontBlock(items.size());
 	for (const auto &item : items) {
 		addItemToBlock(item);

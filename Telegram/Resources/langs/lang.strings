@@ -8083,6 +8083,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "ayu_EditedMarkText" = "Edited Mark";
 "ayu_ReplaceMarksWithIcons" = "Replace with Icons";
 "ayu_SemiTransparentDeletedMessages" = "Translucent Deleted Messages";
+"ayu_KeepDeletedMessagesInChat" = "Keep Deleted Messages in Chat";
 "ayu_HideNotificationCounters" = "Hide Notification Counters";
 "ayu_HideNotificationBadge" = "Hide Notification Badge";
 "ayu_HideNotificationBadgeDescription" = "Hides the notification counter on the app icon in the taskbar and tray.";
