@@ -38,21 +38,18 @@ jobs:
           choco install -y ninja
 
       - name: Prepare libraries
-        run: |
-          cd ${{ github.workspace }}
-          Telegram\build\prepare\win.bat
+        shell: cmd
+        run: cd /d ${{ github.workspace }} && Telegram\build\prepare\win.bat
         env:
           CMAKE_PREFIX_PATH: ${{ github.workspace }}\Libraries
 
       - name: Configure
-        run: |
-          cd ${{ github.workspace }}\Telegram
-          configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+        shell: cmd
+        run: cd /d ${{ github.workspace }}\Telegram && configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
       - name: Build Release
-        run: |
-          cd ${{ github.workspace }}
-          cmake --build out --config Release --target Telegram -- /p:CL_MPCount=
+        shell: cmd
+        run: cd /d ${{ github.workspace }} && cmake --build out --config Release --target Telegram
         timeout-minutes: 120
 
       - name: Upload artifact
