@@ -1,43 +1,35 @@
 name: Build AyuGram Windows x64
-
 on:
   push:
     branches: [ dev ]
   workflow_dispatch:
-
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 480
-
+    timeout-minutes: 540
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
-
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64
           sdk: 10.0.26100.0
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
       - name: Install dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           choco install -y ninja
-
       - name: Prepare libraries
         shell: cmd
         run: |
@@ -45,13 +37,11 @@ jobs:
           Telegram\build\prepare\win.bat
         env:
           CMAKE_PREFIX_PATH: ${{ github.workspace }}\Libraries
-
       - name: Configure
         shell: cmd
         run: |
           cd /d ${{ github.workspace }}\Telegram
           call configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
-
       - name: Fix PDB C1090 error and memory for Release build
         shell: pwsh
         run: |
@@ -59,10 +49,17 @@ jobs:
           $optionsFile = "${{ github.workspace }}\cmake\options_win.cmake"
           $content = Get-Content $optionsFile -Raw
           $content = $content -replace '(/MP # Enable multi process build\.)\s*\r?\n\s*/EHsc', "`$1`n`t/FS`n`t/EHsc"
+
           # Fix 2: Fix linker /DEBUG generator expression
           $content = $content -replace '\$<IF:\$<STREQUAL:\$<GENEX_EVAL:\s*\$<TARGET_PROPERTY:MSVC_DEBUG_INFORMATION_FORMAT>>,ProgramDatabase>,/DEBUG,/DEBUG:NONE>', '$<IF:$<BOOL:$<GENEX_EVAL: $<TARGET_PROPERTY:MSVC_DEBUG_INFORMATION_FORMAT>>>,/DEBUG,/DEBUG:NONE>'
-          # Fix 3: Reduce /MP parallelism to avoid OOM on GitHub runners
-          $content = $content -replace '/MP # Enable multi process build\.', '/MP2 # Enable multi process build (limited to 2 for CI OOM avoidance).'
+
+          # Fix 3: Use /MP4 (4-way parallel) for better speed, still safe with /FS
+          $content = $content -replace '/MP # Enable multi process build\.', '/MP4 # Enable multi process build (4-way for CI speed).'
+
+          # Fix 3b: Add /Zm500 to increase compiler heap limit (prevents C1076)
+          $content = $content -replace '(/W3)', '/Zm500 `$1'
+          Write-Host "Added /Zm500 to increase compiler heap limit"
+
           Set-Content $optionsFile $content -NoNewline
           Write-Host "Patched options_win.cmake"
 
@@ -72,27 +69,23 @@ jobs:
           $content2 = $content2 -replace 'set\(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase" CACHE STRING ""\)', 'set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>$<$<CONFIG:Release,MinSizeRel>:Embedded>" CACHE STRING "" FORCE)'
           Set-Content $varsFile $content2 -NoNewline
           Write-Host "Patched variables.cmake"
-
       - name: Re-configure after cmake patches
         shell: cmd
         run: |
           cd /d ${{ github.workspace }}\Telegram
           call configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
-
       - name: Build Release
         shell: cmd
         run: |
           cd /d ${{ github.workspace }}
-          cmake --build out --config Release --target Telegram -- /p:CL_MPCount=
-        timeout-minutes: 300
-
+          cmake --build out --config Release --target Telegram -- /p:CL_MPCount=4
+        timeout-minutes: 420
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-Windows-x64-Release
           path: ${{ github.workspace }}\out\Release\AyuGram.exe
           if-no-files-found: warn
-
       - name: Upload Debug artifact
         uses: actions/upload-artifact@v4
         with:
