@@ -22,6 +22,7 @@
 #include "history/history_item.h"
 #include "history/history_item_components.h"
 #include "main/main_session.h"
+#include "ui/text/text_utilities.h"
 
 namespace AyuMessages {
 
@@ -193,7 +194,7 @@ void reinjectDeletedMessages(not_null<History*> history) {
 		for (const auto &existingItem : history->clientSideMessages()) {
 			if (existingItem->isDeleted()
 				&& existingItem->date() == msg.date
-				&& existingItem->text().text == text) {
+				&& existingItem->originalText().text == text) {
 				alreadyExists = true;
 				break;
 			}
@@ -202,7 +203,7 @@ void reinjectDeletedMessages(not_null<History*> history) {
 			continue;
 		}
 
-		auto textAndEntities = Ui::Text::WithEntities(text);
+		auto textAndEntities = TextWithEntities(text);
 		const auto entities = AyuMapper::deserializeTextWithEntities(msg.textEntities);
 		textAndEntities.entities = Api::EntitiesFromMTP(&peer->session(), entities.v);
 

@@ -8,6 +8,8 @@
 
 #include "ayu/data/entities.h"
 
+class History;
+
 namespace AyuMessages {
 
 void addEditedMessage(not_null<HistoryItem *> item);

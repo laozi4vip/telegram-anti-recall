@@ -12,7 +12,7 @@ concurrency:
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 360
+    timeout-minutes: 480
 
     steps:
       - name: Checkout
@@ -52,20 +52,21 @@ jobs:
           cd /d ${{ github.workspace }}\Telegram
           call configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
 
-      - name: Fix PDB C1090 error for Release build
+      - name: Fix PDB C1090 error and memory for Release build
         shell: pwsh
         run: |
-          # Apply cmake patches as documented in docs/building-win-x64.md
           # Fix 1: Add /FS flag to options_win.cmake
           $optionsFile = "${{ github.workspace }}\cmake\options_win.cmake"
           $content = Get-Content $optionsFile -Raw
           $content = $content -replace '(/MP # Enable multi process build\.)\s*\r?\n\s*/EHsc', "`$1`n`t/FS`n`t/EHsc"
           # Fix 2: Fix linker /DEBUG generator expression
           $content = $content -replace '\$<IF:\$<STREQUAL:\$<GENEX_EVAL:\s*\$<TARGET_PROPERTY:MSVC_DEBUG_INFORMATION_FORMAT>>,ProgramDatabase>,/DEBUG,/DEBUG:NONE>', '$<IF:$<BOOL:$<GENEX_EVAL: $<TARGET_PROPERTY:MSVC_DEBUG_INFORMATION_FORMAT>>>,/DEBUG,/DEBUG:NONE>'
+          # Fix 3: Reduce /MP parallelism to avoid OOM on GitHub runners
+          $content = $content -replace '/MP # Enable multi process build\.', '/MP2 # Enable multi process build (limited to 2 for CI OOM avoidance).'
           Set-Content $optionsFile $content -NoNewline
           Write-Host "Patched options_win.cmake"
 
-          # Fix 3: Fix CMAKE_MSVC_DEBUG_INFORMATION_FORMAT in variables.cmake
+          # Fix 4: Fix CMAKE_MSVC_DEBUG_INFORMATION_FORMAT in variables.cmake
           $varsFile = "${{ github.workspace }}\cmake\variables.cmake"
           $content2 = Get-Content $varsFile -Raw
           $content2 = $content2 -replace 'set\(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase" CACHE STRING ""\)', 'set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>$<$<CONFIG:Release,MinSizeRel>:Embedded>" CACHE STRING "" FORCE)'
@@ -82,8 +83,8 @@ jobs:
         shell: cmd
         run: |
           cd /d ${{ github.workspace }}
-          cmake --build out --config Release --target Telegram
-        timeout-minutes: 150
+          cmake --build out --config Release --target Telegram -- /p:CL_MPCount=
+        timeout-minutes: 300
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
