@@ -42,10 +42,10 @@ jobs:
         run: |
           cd /d ${{ github.workspace }}\Telegram
           call configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
-      - name: Fix PDB C1090 error and memory for Release build
+      - name: Fix compiler flags for CI
         shell: pwsh
         run: |
-          # Fix 1: Add /FS flag to options_win.cmake
+          # Fix 1: Add /FS flag to options_win.cmake (prevents PDB C1090 race)
           $optionsFile = "${{ github.workspace }}\cmake\options_win.cmake"
           $content = Get-Content $optionsFile -Raw
           $content = $content -replace '(/MP # Enable multi process build\.)\s*\r?\n\s*/EHsc', "`$1`n`t/FS`n`t/EHsc"
@@ -53,22 +53,47 @@ jobs:
           # Fix 2: Fix linker /DEBUG generator expression
           $content = $content -replace '\$<IF:\$<STREQUAL:\$<GENEX_EVAL:\s*\$<TARGET_PROPERTY:MSVC_DEBUG_INFORMATION_FORMAT>>,ProgramDatabase>,/DEBUG,/DEBUG:NONE>', '$<IF:$<BOOL:$<GENEX_EVAL: $<TARGET_PROPERTY:MSVC_DEBUG_INFORMATION_FORMAT>>>,/DEBUG,/DEBUG:NONE>'
 
-          # Fix 3: Use /MP4 (4-way parallel) for better speed, still safe with /FS
-          $content = $content -replace '/MP # Enable multi process build\.', '/MP4 # Enable multi process build (4-way for CI speed).'
+          # Fix 3: Use /MP2 (only 2-way parallel to avoid C1060 OOM on 7GB runners)
+          # /MP4 causes C1060 "compiler is out of heap space" because 4 MSVC processes
+          # each consume ~1.5GB, exceeding the runner's 7GB RAM
+          $content = $content -replace '/MP # Enable multi process build\.', '/MP2 # Enable multi process build (2-way to avoid C1060 OOM on CI).'
 
-          # Fix 3b: Add /Zm500 to increase compiler heap limit (prevents C1076)
-          $content = $content -replace '(/W3)', '/Zm500 `$1'
-          Write-Host "Added /Zm500 to increase compiler heap limit"
+          # Fix 3b: Add /Zm1000 to significantly increase compiler heap (prevents C1076)
+          $content = $content -replace '(/W3)', '/Zm1000 `$1'
+          Write-Host "Added /Zm1000 to increase compiler heap limit"
 
           Set-Content $optionsFile $content -NoNewline
           Write-Host "Patched options_win.cmake"
 
           # Fix 4: Fix CMAKE_MSVC_DEBUG_INFORMATION_FORMAT in variables.cmake
+          # Use Embedded for Release to avoid PDB file issues entirely
           $varsFile = "${{ github.workspace }}\cmake\variables.cmake"
           $content2 = Get-Content $varsFile -Raw
           $content2 = $content2 -replace 'set\(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase" CACHE STRING ""\)', 'set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>$<$<CONFIG:Release,MinSizeRel>:Embedded>" CACHE STRING "" FORCE)'
           Set-Content $varsFile $content2 -NoNewline
           Write-Host "Patched variables.cmake"
+
+          # Fix 5: Split mocs_compilation_Release.cpp into smaller files
+          # This file includes all MOC outputs and causes C1060/C1076
+          $mocsFile = "${{ github.workspace }}\out\Telegram\Telegram_autogen\mocs_compilation_Release.cpp"
+          if (Test-Path $mocsFile) {
+            $lines = Get-Content $mocsFile
+            $totalLines = $lines.Count
+            Write-Host "mocs_compilation_Release.cpp has $totalLines lines"
+            if ($totalLines -gt 50) {
+              $chunkSize = [Math]::Ceiling($totalLines / 4)
+              $chunk1 = $lines[0..([Math]::Min($chunkSize-1, $totalLines-1))]
+              $chunk2 = $lines[$chunkSize..([Math]::Min(2*$chunkSize-1, $totalLines-1))]
+              $chunk3 = $lines[(2*$chunkSize)..([Math]::Min(3*$chunkSize-1, $totalLines-1))]
+              $chunk4 = $lines[(3*$chunkSize)..($totalLines-1)]
+              Set-Content -Path $mocsFile -Value $chunk1 -NoNewline
+              $mocsDir = "${{ github.workspace }}\out\Telegram\Telegram_autogen"
+              Set-Content -Path "$mocsDir\mocs_compilation_Release_p2.cpp" -Value $chunk2
+              Set-Content -Path "$mocsDir\mocs_compilation_Release_p3.cpp" -Value $chunk3
+              Set-Content -Path "$mocsDir\mocs_compilation_Release_p4.cpp" -Value $chunk4
+              Write-Host "Split mocs_compilation_Release.cpp into 4 parts"
+            }
+          }
       - name: Re-configure after cmake patches
         shell: cmd
         run: |
@@ -78,7 +103,7 @@ jobs:
         shell: cmd
         run: |
           cd /d ${{ github.workspace }}
-          cmake --build out --config Release --target Telegram -- /p:CL_MPCount=4
+          cmake --build out --config Release --target Telegram -- /p:CL_MPCount=2 /p:UseMultiToolTask=true /p:EnforceProcessCountAcrossBuilds=true /m:2
         timeout-minutes: 420
       - name: Upload artifact
         uses: actions/upload-artifact@v4
