@@ -1,4 +1,5 @@
-# AyuGramDesktop Anti-Recall
+# Aelegram-anti-recall
+
 
 ![AyuGram Logo](.github/AyuGram.png) ![AyuChan](.github/AyuChan.png)
 
@@ -112,24 +113,6 @@ Follow the [official guide](https://github.com/AyuGram/AyuGramDesktop/blob/dev/d
 ### Linux
 
 Follow the [official guide](https://github.com/AyuGram/AyuGramDesktop/blob/dev/docs/building-linux.md).
-
----
-
-## 从上游更新
-
-本项目基于 AyuGramDesktop 上游仓库修改，当上游有新更新时：
-
-```bash
-# 拉取上游最新代码
-git fetch origin
-
-# 合并上游更新（保留我们的修改）
-git rebase origin/dev
-# 或使用 merge：git merge origin/dev
-
-# 推送到我们的仓库
-git push myfork dev:telegram-anti-recall
-```
 
 ---
 
