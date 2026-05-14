@@ -207,7 +207,13 @@ void reinjectDeletedMessages(not_null<History*> history) {
 		const auto entities = AyuMapper::deserializeTextWithEntities(msg.textEntities);
 		textAndEntities.entities = Api::EntitiesFromMTP(&peer->session(), entities.v);
 
+		const ID currentUserId = peer->session().userId().bare & PeerId::kChatTypeMask;
+		const bool isOutgoing = (msg.fromId == currentUserId);
+
 		base::flags<MessageFlag> flags = MessageFlag::Local | MessageFlag::HistoryEntry | MessageFlag::ClientSideUnread;
+		if (isOutgoing && !peer->isSelf()) {
+			flags |= MessageFlag::Outgoing;
+		}
 		if (from) {
 			flags |= MessageFlag::HasFromId;
 		}
