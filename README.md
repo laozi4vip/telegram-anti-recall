@@ -114,3 +114,9 @@ Follow the [official guide](https://github.com/AyuGram/AyuGramDesktop/blob/dev/d
 
 Follow the [official guide](https://github.com/AyuGram/AyuGramDesktop/blob/dev/docs/building-linux.md).
 
+---
+
+## 致谢
+
+- 原项目：[AyuGram/AyuGramDesktop](https://github.com/AyuGram/AyuGramDesktop)
+- Telegram Desktop：[telegramdesktop/tdesktop](https://github.com/telegramdesktop/tdesktop)
