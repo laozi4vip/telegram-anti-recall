@@ -1,4 +1,4 @@
-# AyuGram
+# AyuGramDesktop Anti-Recall
 
 ![AyuGram Logo](.github/AyuGram.png) ![AyuChan](.github/AyuChan.png)
 
@@ -17,6 +17,22 @@
 - Enhanced appearance
 
 And many more. Check out our [Documentation](https://docs.ayugram.one/desktop/).
+
+## ✨ 新增功能（Anti-Recall 增强）
+
+### 保留已删除消息（Keep Deleted Messages in Chat）
+
+开启后，当对方在聊天中删除消息时，消息**不会从聊天界面消失**，而是以**删除状态**（半透明样式）继续显示，方便你事后回顾完整聊天记录。
+
+- **实时显示**：对方删除消息时，消息立即变为删除状态显示，无需重启
+- **重启后自动恢复**：程序重启后，已保存的删除消息会自动从本地数据库重新加载到聊天界面
+- **发送方向正确**：重新加载的删除消息会根据原始发送者正确显示在左侧（对方消息）或右侧（自己的消息）
+- **纯本地实现**：所有删除消息仅保存在本地数据库，不会向 Telegram 服务器发送任何数据，不影响服务器端数据，无账号风险
+- **独立开关**：可在设置中随时开启或关闭
+
+**使用方法：** 打开 AyuGram 设置 → 聊天设置（Chats）→ 开启 **"保留已删除消息"**
+
+> 📖 详细技术实现与安全性说明见 [README_anti_recall.md](README_anti_recall.md)
 
 <h3>
   <details>
