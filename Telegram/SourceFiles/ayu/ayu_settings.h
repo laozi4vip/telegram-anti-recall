@@ -623,7 +623,7 @@ private:
 	rpl::variable<bool> _filtersEnabled = false;
 	rpl::variable<bool> _filtersEnabledInChats = false;
 	rpl::variable<bool> _hideFromBlocked = false;
-	rpl::variable<bool> _keepDeletedMessagesInChat = false;
+	rpl::variable<bool> _keepDeletedMessagesInChat = true;
 	rpl::variable<bool> _semiTransparentDeletedMessages = false;
 	rpl::variable<bool> _disableAds = true;
 	rpl::variable<bool> _disableStories = false;
