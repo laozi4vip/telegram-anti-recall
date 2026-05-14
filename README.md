@@ -1,4 +1,4 @@
-# Aelegram-anti-recall
+# Telegram-anti-recall
 
 
 ![AyuGram Logo](.github/AyuGram.png) ![AyuChan](.github/AyuChan.png)
