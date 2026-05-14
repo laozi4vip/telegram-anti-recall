@@ -26,7 +26,7 @@
 ## 使用方法
 
 1. 打开 AyuGram 设置 → 聊天设置（Chats）
-2. 找到 **"保留已删除消息"**（Keep Deleted Messages in Chat）开关
+2. 找到 **"保留已删除消息"**（Keep Deleted Messages in Chat）开关（默认开启）
 3. 开启后，聊天中被删除的消息将以删除样式继续显示
 
 ---
