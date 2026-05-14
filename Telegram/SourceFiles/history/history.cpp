@@ -1735,10 +1735,12 @@ void History::addEdgesToSharedMedia() {
 void History::addOlderSlice(const QVector<MTPMessage> &slice) {
 	if (slice.isEmpty()) {
 		_loadedAtTop = true;
-		checkLocalMessages();
 		// AyuGram: reinject deleted messages even for empty slices
 		// (e.g. when opening a chat with no server messages loaded yet)
 		AyuMessages::reinjectDeletedMessages(this);
+
+		checkLocalMessages();
+
 		return;
 	}
 
@@ -1754,6 +1756,10 @@ void History::addOlderSlice(const QVector<MTPMessage> &slice) {
 
 	// AyuGram: reinject deleted messages from database after history slice is loaded
 	AyuMessages::reinjectDeletedMessages(this);
+
+	// Re-check local messages so reinjected deleted messages get inserted into blocks
+	checkLocalMessages();
+	checkLastMessage();
 }
 
 void History::addCreatedOlderSlice(
