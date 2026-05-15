@@ -1,0 +1,28 @@
+# Anti-Recall 补丁说明
+
+## 基于上游版本
+AyuGramDesktop commit: b25513a06f (chore: change tray icon)
+
+## 修改文件列表
+
+| 文件 | 修改内容 |
+|------|----------|
+| Telegram/SourceFiles/ayu/ayu_settings.h | 新增 keepDeletedMessagesInChat 设置项（默认开启） |
+| Telegram/SourceFiles/ayu/ayu_settings.cpp | 新增设置项的读写逻辑 |
+| Telegram/SourceFiles/ayu/data/messages_storage.cpp | 新增 reinjectDeletedMessages()：从本地数据库读取已删除消息并重新注入聊天界面；根据 fromId 设置 Outgoing 标志 |
+| Telegram/SourceFiles/ayu/data/messages_storage.h | 新增 reinjectDeletedMessages() 声明 |
+| Telegram/SourceFiles/ayu/ui/settings/settings_chats.cpp | 在聊天设置页面新增 UI 开关 |
+| Telegram/SourceFiles/history/history.cpp | 在 addOlderSlice 中 reinjectDeletedMessages() 后追加 checkLocalMessages() |
+
+## 使用方法
+
+### 方式1：直接替换文件
+将对应文件复制到 AyuGramDesktop 源码的相同路径下即可。
+
+### 方式2：应用补丁
+```bash
+cd AyuGramDesktop
+git apply anti-recall.patch
+```
+
+注意：如果上游更新了这些文件，补丁可能产生冲突，需要手动合并。

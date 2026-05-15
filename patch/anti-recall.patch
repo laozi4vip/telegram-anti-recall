@@ -1,0 +1,274 @@
+diff --git a/Telegram/SourceFiles/ayu/ayu_settings.cpp b/Telegram/SourceFiles/ayu/ayu_settings.cpp
+index 2280020ce8..d49904b4a4 100644
+--- a/Telegram/SourceFiles/ayu/ayu_settings.cpp
++++ b/Telegram/SourceFiles/ayu/ayu_settings.cpp
+@@ -568,6 +568,12 @@ void AyuSettings::setHideFromBlocked(bool val) {
+ 	save();
+ }
+ 
++void AyuSettings::setKeepDeletedMessagesInChat(bool val) {
++	if (_keepDeletedMessagesInChat.current() == val) return;
++	_keepDeletedMessagesInChat = val;
++	save();
++}
++
+ void AyuSettings::setSemiTransparentDeletedMessages(bool val) {
+ 	if (_semiTransparentDeletedMessages.current() == val) return;
+ 	_semiTransparentDeletedMessages = val;
+@@ -1066,6 +1072,7 @@ void to_json(nlohmann::json &j, const AyuSettings &s) {
+ 		{"filtersEnabled", s._filtersEnabled.current()},
+ 		{"filtersEnabledInChats", s._filtersEnabledInChats.current()},
+ 		{"hideFromBlocked", s._hideFromBlocked.current()},
++		{"keepDeletedMessagesInChat", s._keepDeletedMessagesInChat.current()},
+ 		{"semiTransparentDeletedMessages", s._semiTransparentDeletedMessages.current()},
+ 		{"disableAds", s._disableAds.current()},
+ 		{"disableStories", s._disableStories.current()},
+@@ -1166,6 +1173,7 @@ void from_json(const nlohmann::json &j, AyuSettings &s) {
+ 	s._filtersEnabled = j.value("filtersEnabled", defaults._filtersEnabled.current());
+ 	s._filtersEnabledInChats = j.value("filtersEnabledInChats", defaults._filtersEnabledInChats.current());
+ 	s._hideFromBlocked = j.value("hideFromBlocked", defaults._hideFromBlocked.current());
++	s._keepDeletedMessagesInChat = j.value("keepDeletedMessagesInChat", defaults._keepDeletedMessagesInChat.current());
+ 	s._semiTransparentDeletedMessages = j.value("semiTransparentDeletedMessages", defaults._semiTransparentDeletedMessages.current());
+ 	s._disableAds = j.value("disableAds", defaults._disableAds.current());
+ 	s._disableStories = j.value("disableStories", defaults._disableStories.current());
+diff --git a/Telegram/SourceFiles/ayu/ayu_settings.h b/Telegram/SourceFiles/ayu/ayu_settings.h
+index 97a0439215..4a83a564f6 100644
+--- a/Telegram/SourceFiles/ayu/ayu_settings.h
++++ b/Telegram/SourceFiles/ayu/ayu_settings.h
+@@ -273,6 +273,7 @@ public:
+ 	[[nodiscard]] bool filtersEnabled() const { return _filtersEnabled.current(); }
+ 	[[nodiscard]] bool filtersEnabledInChats() const { return _filtersEnabledInChats.current(); }
+ 	[[nodiscard]] bool hideFromBlocked() const { return _hideFromBlocked.current(); }
++	[[nodiscard]] bool keepDeletedMessagesInChat() const { return _keepDeletedMessagesInChat.current(); }
+ 	[[nodiscard]] bool semiTransparentDeletedMessages() const { return _semiTransparentDeletedMessages.current(); }
+ 	[[nodiscard]] bool disableAds() const { return _disableAds.current(); }
+ 	[[nodiscard]] bool disableStories() const { return _disableStories.current(); }
+@@ -357,6 +358,7 @@ public:
+ 	void setFiltersEnabled(bool val);
+ 	void setFiltersEnabledInChats(bool val);
+ 	void setHideFromBlocked(bool val);
++	void setKeepDeletedMessagesInChat(bool val);
+ 	void setSemiTransparentDeletedMessages(bool val);
+ 	void setDisableAds(bool val);
+ 	void setDisableStories(bool val);
+@@ -449,6 +451,8 @@ public:
+ 	[[nodiscard]] rpl::producer<bool> filtersEnabledInChatsChanges() const { return _filtersEnabledInChats.changes(); }
+ 	[[nodiscard]] rpl::producer<bool> hideFromBlockedValue() const { return _hideFromBlocked.value(); }
+ 	[[nodiscard]] rpl::producer<bool> hideFromBlockedChanges() const { return _hideFromBlocked.changes(); }
++	[[nodiscard]] rpl::producer<bool> keepDeletedMessagesInChatValue() const { return _keepDeletedMessagesInChat.value(); }
++	[[nodiscard]] rpl::producer<bool> keepDeletedMessagesInChatChanges() const { return _keepDeletedMessagesInChat.changes(); }
+ 	[[nodiscard]] rpl::producer<bool> semiTransparentDeletedMessagesValue() const { return _semiTransparentDeletedMessages.value(); }
+ 	[[nodiscard]] rpl::producer<bool> semiTransparentDeletedMessagesChanges() const { return _semiTransparentDeletedMessages.changes(); }
+ 	[[nodiscard]] rpl::producer<bool> disableAdsValue() const { return _disableAds.value(); }
+@@ -619,6 +623,7 @@ private:
+ 	rpl::variable<bool> _filtersEnabled = false;
+ 	rpl::variable<bool> _filtersEnabledInChats = false;
+ 	rpl::variable<bool> _hideFromBlocked = false;
++	rpl::variable<bool> _keepDeletedMessagesInChat = true;
+ 	rpl::variable<bool> _semiTransparentDeletedMessages = false;
+ 	rpl::variable<bool> _disableAds = true;
+ 	rpl::variable<bool> _disableStories = false;
+diff --git a/Telegram/SourceFiles/ayu/data/messages_storage.cpp b/Telegram/SourceFiles/ayu/data/messages_storage.cpp
+index 97f332a966..129bd3c4ec 100644
+--- a/Telegram/SourceFiles/ayu/data/messages_storage.cpp
++++ b/Telegram/SourceFiles/ayu/data/messages_storage.cpp
+@@ -9,13 +9,20 @@
+ #include "ayu/data/ayu_database.h"
+ #include "ayu/utils/ayu_mapper.h"
+ #include "ayu/utils/telegram_helpers.h"
++#include "ayu/ayu_settings.h"
++#include "api/api_text_entities.h"
+ #include "base/unixtime.h"
+ #include "data/data_forum_topic.h"
+ #include "data/data_session.h"
++#include "data/data_channel.h"
++#include "data/data_chat.h"
++#include "data/data_user.h"
++#include "data/data_msg_id.h"
+ #include "history/history.h"
+ #include "history/history_item.h"
+ #include "history/history_item_components.h"
+ #include "main/main_session.h"
++#include "ui/text/text_utilities.h"
+ 
+ namespace AyuMessages {
+ 
+@@ -139,4 +146,95 @@ void clearDeletedMessages(not_null<PeerData*> peer, ID topicId) {
+ 	AyuDatabase::clearDeletedMessages(userId, getDialogIdFromPeer(peer), topicId);
+ }
+ 
++void reinjectDeletedMessages(not_null<History*> history) {
++	const auto &settings = AyuSettings::getInstance();
++	if (!settings.keepDeletedMessagesInChat()) {
++		return;
++	}
++
++	const auto peer = history->peer;
++	const ID userId = peer->session().userId().bare & PeerId::kChatTypeMask;
++	const auto dialogId = getDialogIdFromPeer(peer);
++
++	// Get all deleted messages for this dialog from the database
++	auto messages = AyuDatabase::getDeletedMessages(userId, dialogId, 0, 0, 0, 5000, "");
++
++	if (messages.empty()) {
++		return;
++	}
++
++	auto &owner = history->owner();
++
++	for (const auto &msg : messages) {
++		// Skip messages that still exist in the history as normal (non-deleted) items.
++		const auto serverMsgId = MsgId(msg.messageId);
++		if (const auto existing = owner.message(peer->id, serverMsgId)) {
++			if (!existing->isDeleted()) {
++				// Server still has this message, skip injection
++				continue;
++			}
++		}
++
++		PeerData *from = owner.userLoaded(msg.fromId);
++		if (!from) {
++			from = owner.channelLoaded(msg.fromId);
++		}
++		if (!from) {
++			from = reinterpret_cast<PeerData*>(owner.chatLoaded(msg.fromId));
++		}
++
++		// Use a client-side message ID so this is treated as a local message
++		const auto localMsgId = owner.nextLocalMessageId();
++
++		const auto text = QString::fromStdString(msg.text);
++
++		// Dedup: skip if a client-side deleted message with same text and date
++		// already exists (prevents duplicates when addOlderSlice is called multiple times)
++		bool alreadyExists = false;
++		for (const auto &existingItem : history->clientSideMessages()) {
++			if (existingItem->isDeleted()
++				&& existingItem->date() == msg.date
++				&& existingItem->originalText().text == text) {
++				alreadyExists = true;
++				break;
++			}
++		}
++		if (alreadyExists) {
++			continue;
++		}
++
++		auto textAndEntities = TextWithEntities(text);
++		const auto entities = AyuMapper::deserializeTextWithEntities(msg.textEntities);
++		textAndEntities.entities = Api::EntitiesFromMTP(&peer->session(), entities.v);
++
++		const ID currentUserId = peer->session().userId().bare & PeerId::kChatTypeMask;
++		const bool isOutgoing = (msg.fromId == currentUserId);
++
++		base::flags<MessageFlag> flags = MessageFlag::Local | MessageFlag::HistoryEntry | MessageFlag::ClientSideUnread;
++		if (isOutgoing && !peer->isSelf()) {
++			flags |= MessageFlag::Outgoing;
++		}
++		if (from) {
++			flags |= MessageFlag::HasFromId;
++		}
++		if (!msg.postAuthor.empty()) {
++			flags |= MessageFlag::HasPostAuthor;
++		}
++
++		const auto item = history->makeMessage({
++			.id = localMsgId,
++			.flags = flags,
++			.from = from ? from->id : PeerId(0),
++			.date = msg.date,
++			.postAuthor = !msg.postAuthor.empty() ? QString::fromStdString(msg.postAuthor) : QString(),
++		}, std::move(textAndEntities), MTP_messageMediaEmpty());
++
++		// Mark as deleted so it renders with the deleted mark / semi-transparent style
++		item->setDeleted();
++
++		// Register as a client-side message so it survives properly in the history
++		history->registerClientSideMessage(item);
++	}
++}
++
+ }
+diff --git a/Telegram/SourceFiles/ayu/data/messages_storage.h b/Telegram/SourceFiles/ayu/data/messages_storage.h
+index 66935d9c4d..36df22ada9 100644
+--- a/Telegram/SourceFiles/ayu/data/messages_storage.h
++++ b/Telegram/SourceFiles/ayu/data/messages_storage.h
+@@ -8,6 +8,8 @@
+ 
+ #include "ayu/data/entities.h"
+ 
++class History;
++
+ namespace AyuMessages {
+ 
+ void addEditedMessage(not_null<HistoryItem *> item);
+@@ -19,4 +21,6 @@ std::vector<AyuMessageBase> getDeletedMessages(not_null<PeerData*> peer, ID topi
+ bool hasDeletedMessages(not_null<PeerData*> peer, ID topicId);
+ void clearDeletedMessages(not_null<PeerData*> peer, ID topicId);
+ 
++void reinjectDeletedMessages(not_null<History*> history);
++
+ }
+diff --git a/Telegram/SourceFiles/ayu/ui/settings/settings_chats.cpp b/Telegram/SourceFiles/ayu/ui/settings/settings_chats.cpp
+index 9a280e3c2e..ef7a39f07b 100644
+--- a/Telegram/SourceFiles/ayu/ui/settings/settings_chats.cpp
++++ b/Telegram/SourceFiles/ayu/ui/settings/settings_chats.cpp
+@@ -218,6 +218,14 @@ void BuildMarks(
+ 		.setter = &AyuSettings::setSimpleQuotesAndReplies,
+ 	});
+ 
++	// Keep Deleted Messages in Chat toggle
++	ayu.addSettingToggle({
++		.id = u"ayu/keepDeletedMessagesInChat"_q,
++		.title = tr::ayu_KeepDeletedMessagesInChat(),
++		.getter = &AyuSettings::keepDeletedMessagesInChat,
++		.setter = &AyuSettings::setKeepDeletedMessagesInChat,
++	});
++
+ 	const auto semiTransparent = ayu.addSettingToggle({
+ 		.id = u"ayu/semiTransparentDeletedMessages"_q,
+ 		.altIds = { u"ayu/translucentDeletedMessages"_q },
+diff --git a/Telegram/SourceFiles/history/history.cpp b/Telegram/SourceFiles/history/history.cpp
+index 0f012e7ff8..7859eac7e0 100644
+--- a/Telegram/SourceFiles/history/history.cpp
++++ b/Telegram/SourceFiles/history/history.cpp
+@@ -81,6 +81,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+ // AyuGram includes
+ #include "ayu/ayu_settings.h"
+ #include "ayu/ayu_state.h"
++#include "ayu/data/messages_storage.h"
+ 
+ 
+ namespace {
+@@ -1734,7 +1735,12 @@ void History::addEdgesToSharedMedia() {
+ void History::addOlderSlice(const QVector<MTPMessage> &slice) {
+ 	if (slice.isEmpty()) {
+ 		_loadedAtTop = true;
++		// AyuGram: reinject deleted messages even for empty slices
++		// (e.g. when opening a chat with no server messages loaded yet)
++		AyuMessages::reinjectDeletedMessages(this);
++
+ 		checkLocalMessages();
++
+ 		return;
+ 	}
+ 
+@@ -1747,10 +1753,17 @@ void History::addOlderSlice(const QVector<MTPMessage> &slice) {
+ 	}
+ 	checkLocalMessages();
+ 	checkLastMessage();
++
++	// AyuGram: reinject deleted messages from database after history slice is loaded
++	AyuMessages::reinjectDeletedMessages(this);
++
++	// Re-check local messages so reinjected deleted messages get inserted into blocks
++	checkLocalMessages();
++	checkLastMessage();
+ }
+ 
+ void History::addCreatedOlderSlice(
+-		const std::vector<not_null<HistoryItem*>> &items) {
++	const std::vector<not_null<HistoryItem*>> &items) {
+ 	startBuildingFrontBlock(items.size());
+ 	for (const auto &item : items) {
+ 		addItemToBlock(item);
