@@ -102,7 +102,7 @@ namespace {
 
 [[nodiscard]] MTPPhoto RebuildPhoto(not_null<PhotoData*> photo) {
 	const auto input = photo->mtpInput();
-	return input.match([&](const MTPDinputPhoto &data) {
+	return input.match([&](const MTPDinputPhoto &data) -> MTPPhoto {
 		auto sizes = QVector<MTPPhotoSize>();
 		sizes.push_back(MTP_photoSize(
 			MTP_string("m"),
@@ -118,14 +118,14 @@ namespace {
 			MTP_vector<MTPPhotoSize>(sizes),
 			MTPVector<MTPVideoSize>(),
 			MTP_int(photo->getDC()));
-	}, [&](const auto &) {
+	}, [&](const auto &) -> MTPPhoto {
 		return MTP_photoEmpty(MTP_long(photo->id));
 	});
 }
 
 [[nodiscard]] MTPDocument RebuildDocument(not_null<DocumentData*> document) {
 	const auto input = document->mtpInput();
-	return input.match([&](const MTPDinputDocument &data) {
+	return input.match([&](const MTPDinputDocument &data) -> MTPDocument {
 		auto attributes = QVector<MTPDocumentAttribute>();
 		if (!document->filename().isEmpty()) {
 			attributes.push_back(MTP_documentAttributeFilename(
@@ -182,10 +182,10 @@ namespace {
 			MTPVector<MTPVideoSize>(),
 			MTP_int(document->getDC()),
 			MTP_vector<MTPDocumentAttribute>(attributes));
-	}, [](const MTPDinputDocumentEmpty &) {
-		return MTPDocument();
-	}, [](const auto &) {
-		return MTPDocument();
+	}, [](const MTPDinputDocumentEmpty &) -> MTPDocument {
+		return MTP_documentEmpty(MTP_long(0));
+	}, [](const auto &) -> MTPDocument {
+		return MTP_documentEmpty(MTP_long(0));
 	});
 }
 
@@ -214,7 +214,7 @@ std::vector<char> serializeMessageMedia(not_null<HistoryItem*> item) {
 			return {};
 		}
 		using Flag = MTPDmessageMediaDocument::Flag;
-		auto flags = Flag::f_document;
+		auto flags = MTPDmessageMediaDocument::Flags(0) | Flag::f_document;
 		if (document->isVideoFile() || document->isVideoMessage()) {
 			flags |= Flag::f_video;
 		}
