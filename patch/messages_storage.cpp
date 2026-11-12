@@ -1,4 +1,4 @@
-﻿// This is the source code of AyuGram for Desktop.
+// This is the source code of AyuGram for Desktop.
 //
 // We do not and cannot prevent the use of our code,
 // but be respectful and credit the original author.
@@ -18,13 +18,23 @@
 #include "data/data_chat.h"
 #include "data/data_user.h"
 #include "data/data_msg_id.h"
+#include "data/data_peer_id.h"
 #include "history/history.h"
 #include "history/history_item.h"
 #include "history/history_item_components.h"
 #include "main/main_session.h"
 #include "ui/text/text_utilities.h"
 
+#include <map>
+#include <set>
+
 namespace AyuMessages {
+namespace {
+
+using ReinjectedKey = std::pair<ID, ID>;
+std::map<ReinjectedKey, std::set<int>> ReinjectedIds;
+
+} // namespace
 
 template<typename DerivedMessage>
 std::vector<AyuMessageBase> convertToBase(const std::vector<DerivedMessage> &messages) {
@@ -81,21 +91,21 @@ void map(not_null<HistoryItem*> item, AyuMessageBase &message) {
 	message.text = serializedText.first;
 	message.textEntities = serializedText.second;
 
-	// todo: implement mapping
+	message.documentSerialized = AyuMapper::serializeMessageMedia(item);
+	message.documentType = message.documentSerialized.empty() ? 0 : 1;
 	message.mediaPath = "/";
-	// message.hqThumbPath
-	message.documentType = 0; // document type none
-	// message.documentSerialized
-	// message.thumbsSerialized
-	// message.documentAttributesSerialized
-	// message.mimeType
+	if (const auto media = item->media()) {
+		if (const auto document = media->document()) {
+			message.mimeType = document->mimeString().toStdString();
+		}
+	}
 }
 
 void addEditedMessage(not_null<HistoryItem *> item) {
 	EditedMessage message;
 	map(item, message);
 
-	if (message.text.empty()) {
+	if (message.text.empty() && message.documentSerialized.empty()) {
 		return;
 	}
 
@@ -122,7 +132,7 @@ void addDeletedMessage(not_null<HistoryItem*> item) {
 	DeletedMessage message;
 	map(item, message);
 
-	if (message.text.empty()) {
+	if (message.text.empty() && message.documentSerialized.empty()) {
 		return;
 	}
 
@@ -141,9 +151,17 @@ bool hasDeletedMessages(not_null<PeerData*> peer, ID topicId) {
 	return AyuDatabase::hasDeletedMessages(userId, getDialogIdFromPeer(peer), topicId);
 }
 
+void removeDeletedMessage(not_null<HistoryItem*> item) {
+	const auto peer = item->history()->peer;
+	const ID userId = peer->session().userId().bare & PeerId::kChatTypeMask;
+	AyuDatabase::removeDeletedMessage(userId, getDialogIdFromPeer(peer), item->id.bare);
+}
+
 void clearDeletedMessages(not_null<PeerData*> peer, ID topicId) {
 	const ID userId = peer->session().userId().bare & PeerId::kChatTypeMask;
-	AyuDatabase::clearDeletedMessages(userId, getDialogIdFromPeer(peer), topicId);
+	const auto dialogId = getDialogIdFromPeer(peer);
+	AyuDatabase::clearDeletedMessages(userId, dialogId, topicId);
+	ReinjectedIds.erase({ userId, dialogId });
 }
 
 void reinjectDeletedMessages(not_null<History*> history) {
@@ -156,7 +174,11 @@ void reinjectDeletedMessages(not_null<History*> history) {
 	const ID userId = peer->session().userId().bare & PeerId::kChatTypeMask;
 	const auto dialogId = getDialogIdFromPeer(peer);
 
-	// Get all deleted messages for this dialog from the database
+	// A fresh History has no client-side items, so its registry must start empty.
+	if (history->clientSideMessages().empty()) {
+		ReinjectedIds.erase({ userId, dialogId });
+	}
+
 	auto messages = AyuDatabase::getDeletedMessages(userId, dialogId, 0, 0, 0, 5000, "");
 
 	if (messages.empty()) {
@@ -166,42 +188,30 @@ void reinjectDeletedMessages(not_null<History*> history) {
 	auto &owner = history->owner();
 
 	for (const auto &msg : messages) {
-		// Skip messages that still exist in the history as normal (non-deleted) items.
 		const auto serverMsgId = MsgId(msg.messageId);
 		if (const auto existing = owner.message(peer->id, serverMsgId)) {
 			if (!existing->isDeleted()) {
-				// Server still has this message, skip injection
 				continue;
 			}
 		}
 
-		PeerData *from = owner.userLoaded(msg.fromId);
+		PeerData *from = owner.userLoaded(UserId(msg.fromId));
 		if (!from) {
-			from = owner.channelLoaded(msg.fromId);
+			from = owner.channelLoaded(ChannelId(msg.fromId));
 		}
 		if (!from) {
-			from = reinterpret_cast<PeerData*>(owner.chatLoaded(msg.fromId));
+			from = owner.chatLoaded(ChatId(msg.fromId));
 		}
 
-		// Use a client-side message ID so this is treated as a local message
-		const auto localMsgId = owner.nextLocalMessageId();
-
-		const auto text = QString::fromStdString(msg.text);
-
-		// Dedup: skip if a client-side deleted message with same text and date
-		// already exists (prevents duplicates when addOlderSlice is called multiple times)
-		bool alreadyExists = false;
-		for (const auto &existingItem : history->clientSideMessages()) {
-			if (existingItem->isDeleted()
-				&& existingItem->date() == msg.date
-				&& existingItem->originalText().text == text) {
-				alreadyExists = true;
-				break;
-			}
-		}
-		if (alreadyExists) {
+		// Reinjection runs on every loaded slice, so inject each stored row once.
+		if (!ReinjectedIds[{ userId, dialogId }].insert(msg.messageId).second) {
 			continue;
 		}
+
+		const auto text = QString::fromStdString(msg.text);
+		const auto media = AyuMapper::deserializeMessageMedia(msg.documentSerialized);
+
+		const auto localMsgId = owner.nextLocalMessageId();
 
 		auto textAndEntities = TextWithEntities(text);
 		const auto entities = AyuMapper::deserializeTextWithEntities(msg.textEntities);
@@ -226,13 +236,12 @@ void reinjectDeletedMessages(not_null<History*> history) {
 			.flags = flags,
 			.from = from ? from->id : PeerId(0),
 			.date = msg.date,
+			.groupedId = msg.groupedId,
 			.postAuthor = !msg.postAuthor.empty() ? QString::fromStdString(msg.postAuthor) : QString(),
-		}, std::move(textAndEntities), MTP_messageMediaEmpty());
+		}, std::move(textAndEntities), media);
 
-		// Mark as deleted so it renders with the deleted mark / semi-transparent style
 		item->setDeleted();
 
-		// Register as a client-side message so it survives properly in the history
 		history->registerClientSideMessage(item);
 	}
 }
