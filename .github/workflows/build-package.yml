@@ -1,0 +1,273 @@
+name: Build Windows Package
+
+# Builds a portable .zip and an Inno Setup installer (.exe) for the
+# telegram-anti-recall fork and uploads them as downloadable artifacts.
+on:
+  push:
+    branches: [ telegram-anti-recall ]
+  workflow_dispatch:
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 540
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      # AyuGram targets Windows 7, which the newest v145 toolset no longer
+      # supports. Pin the v143 toolset's 14.44 compiler, which still does.
+      # windows-2022 ships v143, so this resolves to an installed toolset.
+      - name: Setup MSVC (Windows 7 compatible toolset)
+        id: msvc1444
+        uses: ilammy/msvc-dev-cmd@v1
+        continue-on-error: true
+        with:
+          arch: amd64
+          sdk: 10.0.26100.0
+          toolset: 14.44
+
+      - name: Setup MSVC (fallback to default toolset)
+        if: steps.msvc1444.outcome == 'failure'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+          sdk: 10.0.26100.0
+
+      - name: Verify MSVC environment
+        shell: pwsh
+        run: |
+          if (-not $env:VSCMD_ARG_TGT_ARCH) {
+            Write-Error "MSVC environment was not configured"
+            exit 1
+          }
+          Write-Host "VSCMD_ARG_TGT_ARCH=$env:VSCMD_ARG_TGT_ARCH"
+          Write-Host "VSCMD_VER=$env:VSCMD_VER"
+          cl 2>&1 | Select-Object -First 3
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          choco install -y ninja 7zip.install innosetup --no-progress
+
+      - name: Prepare libraries
+        shell: cmd
+        run: |
+          cd /d ${{ github.workspace }}
+          Telegram\build\prepare\win.bat
+        env:
+          CMAKE_PREFIX_PATH: ${{ github.workspace }}\Libraries
+
+      - name: Configure
+        shell: cmd
+        run: |
+          cd /d ${{ github.workspace }}\Telegram
+          call configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+
+      # The 7GB GitHub runner cannot compile this project with the default
+      # compiler flags: /MP spawns one cl.exe per core (~1.5GB each) and hits
+      # C1060 (out of heap space). Limit parallelism and enlarge the heap.
+      - name: Patch compiler flags for CI
+        shell: pwsh
+        run: |
+          $optionsFile = "${{ github.workspace }}\cmake\options_win.cmake"
+          if (-not (Test-Path $optionsFile)) { Write-Error "options_win.cmake not found"; exit 1 }
+          $content = Get-Content $optionsFile -Raw
+
+          # /FS serializes PDB writes, avoiding C1090 races.
+          if ($content -notmatch '/FS') {
+            $content = $content -replace '(/MP\s+# Enable multi process build\.)', "`$1`n        /FS"
+            Write-Host "Added /FS"
+          }
+
+          # 2-way parallelism keeps concurrent cl.exe processes inside runner RAM.
+          $content = $content -replace '/MP(\s+# Enable multi process build\.)', '/MP2$1'
+          Write-Host "Set /MP2"
+
+          # Enlarge the compiler heap so a single heavy TU does not hit C1076.
+          if ($content -notmatch '/Zm') {
+            $content = $content -replace '(/W4|/W3)', '/Zm1000 $1'
+            Write-Host "Added /Zm1000"
+          }
+
+          Set-Content $optionsFile $content -NoNewline
+          Write-Host "--- resulting MSVC block ---"
+          Select-String -Path $optionsFile -Pattern '/MP|/W4|/W3|/Zm|/FS' | ForEach-Object { $_.Line.Trim() }
+
+      - name: Re-configure after flag patches
+        shell: cmd
+        run: |
+          cd /d ${{ github.workspace }}\Telegram
+          call configure.bat x64 -D TDESKTOP_API_ID=2040 -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627
+
+      # mocs_compilation_Release.cpp is one translation unit that includes every
+      # generated MOC file; on a 7GB runner it alone can exhaust the compiler
+      # heap. AUTOMOC writes it during the build, so it is split on a retry.
+      - name: Build Release
+        id: build
+        continue-on-error: true
+        shell: cmd
+        run: |
+          cd /d ${{ github.workspace }}
+          cmake --build out --config Release --target Telegram -- /p:CL_MPCount=2 /p:UseMultiToolTask=true /p:EnforceProcessCountAcrossBuilds=true /m:2
+        timeout-minutes: 420
+
+      - name: Split mocs compilation unit
+        if: steps.build.outcome == 'failure'
+        shell: pwsh
+        run: |
+          $mocsFile = "${{ github.workspace }}\out\Telegram\Telegram_autogen\mocs_compilation_Release.cpp"
+          if (-not (Test-Path $mocsFile)) {
+            Write-Host "mocs_compilation_Release.cpp not found, nothing to split"
+            exit 0
+          }
+          $lines = Get-Content $mocsFile
+          if ($lines.Count -le 50) {
+            Write-Host "mocs file has $($lines.Count) lines, no split needed"
+            exit 0
+          }
+          $chunkSize = [Math]::Ceiling($lines.Count / 4)
+          $mocsDir = Split-Path $mocsFile
+          Set-Content -Path $mocsFile -Value $lines[0..($chunkSize - 1)]
+          for ($i = 1; $i -lt 4; $i++) {
+            $start = $i * $chunkSize
+            $end = [Math]::Min(($i + 1) * $chunkSize - 1, $lines.Count - 1)
+            Set-Content -Path "$mocsDir\mocs_compilation_Release_p$($i + 1).cpp" -Value $lines[$start..$end]
+          }
+          Write-Host "Split mocs_compilation_Release.cpp into 4 parts"
+
+      - name: Rebuild after mocs split
+        if: steps.build.outcome == 'failure'
+        shell: cmd
+        run: |
+          cd /d ${{ github.workspace }}
+          cmake --build out --config Release --target Telegram -- /p:CL_MPCount=1 /p:UseMultiToolTask=true /p:EnforceProcessCountAcrossBuilds=true /m:1
+        timeout-minutes: 420
+
+      - name: Assemble package folder
+        shell: pwsh
+        run: |
+          $release = "${{ github.workspace }}\out\Release"
+          $stage = "${{ github.workspace }}\out\package"
+          $portable = "$stage\AyuGram"
+
+          if (-not (Test-Path "$release\AyuGram.exe")) {
+            Write-Error "AyuGram.exe was not produced; the build did not succeed"
+            exit 1
+          }
+
+          # Installer sources live flat in the stage root, portable files in AyuGram\.
+          New-Item -ItemType Directory -Force -Path $portable | Out-Null
+          Copy-Item "$release\AyuGram.exe" $stage -Force
+          Copy-Item "$release\AyuGram.exe" $portable -Force
+
+          if (Test-Path "$release\Updater.exe") {
+            Copy-Item "$release\Updater.exe" $stage -Force
+            Copy-Item "$release\Updater.exe" $portable -Force
+          } else {
+            Write-Host "::warning::Updater.exe missing, the in-app updater will be unavailable"
+          }
+
+          # d3dcompiler_47.dll ships under modules\<arch>\d3d and is required at runtime.
+          $d3d = "$release\modules\x64\d3d\d3dcompiler_47.dll"
+          if (-not (Test-Path $d3d)) {
+            $d3d = "$release\modules\win64\d3d\d3dcompiler_47.dll"
+          }
+          if (Test-Path $d3d) {
+            New-Item -ItemType Directory -Force -Path "$stage\modules\x64\d3d" | Out-Null
+            Copy-Item $d3d "$stage\modules\x64\d3d\" -Force
+            New-Item -ItemType Directory -Force -Path "$portable\modules\x64\d3d" | Out-Null
+            Copy-Item $d3d "$portable\modules\x64\d3d\" -Force
+          } else {
+            Write-Host "::warning::d3dcompiler_47.dll not found; direct3d rendering may fall back"
+          }
+
+          Write-Host "Staged files:"
+          Get-ChildItem -Recurse $stage | Select-Object FullName, Length | Format-Table -AutoSize
+
+      - name: Create portable zip
+        shell: pwsh
+        run: |
+          $stage = "${{ github.workspace }}\out\package"
+          $version = (Select-String -Path "${{ github.workspace }}\Telegram\build\version" -Pattern '^AppVersionStr\s+(\S+)').Matches.Groups[1].Value
+          if (-not $version) { $version = "dev" }
+          $zipName = "AyuGram-anti-recall-portable-win64-$version.zip"
+          $zipPath = "$stage\$zipName"
+          Compress-Archive -Path "$stage\AyuGram" -DestinationPath $zipPath -CompressionLevel Optimal -Force
+          Write-Host "Created $zipPath"
+          Get-Item $zipPath | Select-Object Name, Length
+          "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Create installer
+        shell: pwsh
+        run: |
+          $stage = "${{ github.workspace }}\out\package"
+          $build = "${{ github.workspace }}\Telegram\build"
+          $version = (Select-String -Path "$build\version" -Pattern '^AppVersionStr\s+(\S+)').Matches.Groups[1].Value
+          if (-not $version) { $version = "0.0.0" }
+          $versionFull = $version
+
+          # setup.iss expects these defines; ReleasePath points at the staged folder.
+          $issArgs = @(
+            "/DMyAppVersion=$version",
+            "/DMyAppVersionFull=$versionFull",
+            "/DMyBuildTarget=win64",
+            "/DReleasePath=$stage",
+            "/DSourcePath=$build\",
+            "/DMyOutputBaseFilename=ayu-anti-recall-setup-x64.$version"
+          )
+          $iss = "$build\setup.iss"
+
+          # Two upstream assumptions do not hold for this fork: the binary is
+          # named AyuGram.exe, and there is no signing certificate in CI.
+          $issContent = Get-Content $iss -Raw
+          $issContent = $issContent -replace '(?m)^SignTool=sha256\r?\n', ''
+          $issContent = $issContent -replace '\{#ReleasePath\}\\Telegram\.exe', '{#ReleasePath}\AyuGram.exe'
+          $patchedIss = "$stage\setup.iss"
+          Set-Content -Path $patchedIss -Value $issContent -NoNewline
+
+          $iscc = (Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          if (-not $iscc) { Write-Error "ISCC.exe not found"; exit 1 }
+          Write-Host "Using $iscc"
+
+          & $iscc @issArgs $patchedIss
+          if ($LASTEXITCODE -ne 0) { Write-Error "Inno Setup failed"; exit 1 }
+
+          $setup = Get-ChildItem $stage -Filter "ayu-anti-recall-setup-x64*.exe" | Select-Object -First 1
+          if (-not $setup) { Write-Error "Installer not produced"; exit 1 }
+          Write-Host "Created $($setup.FullName)"
+          "SETUP_NAME=$($setup.Name)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: AyuGram-anti-recall-portable-win64
+          path: ${{ github.workspace }}\out\package\*.zip
+          if-no-files-found: error
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: AyuGram-anti-recall-installer-win64
+          path: ${{ github.workspace }}\out\package\ayu-anti-recall-setup-x64*.exe
+          if-no-files-found: error
+
+      - name: Upload unpacked build
+        uses: actions/upload-artifact@v4
+        with:
+          name: AyuGram-anti-recall-unpacked-win64
+          path: ${{ github.workspace }}\out\package\AyuGram\**
+          if-no-files-found: warn
