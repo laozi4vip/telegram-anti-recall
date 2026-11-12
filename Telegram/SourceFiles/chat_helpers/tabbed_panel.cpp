@@ -15,10 +15,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 #include "data/data_session.h"
 #include "data/stickers/data_stickers.h"
-#include "ayu/ayu_settings.h"
 #include "core/application.h"
 #include "base/options.h"
 #include "styles/style_chat_helpers.h"
+
+// AyuGram includes
+#include "ayu/ayu_settings.h"
+
 
 namespace ChatHelpers {
 namespace {
@@ -208,8 +211,8 @@ void TabbedPanel::updateContentHeight() {
 	auto availableHeight = _dropDown
 		? (parentWidget()->height() - _top - marginsHeight)
 		: (_bottom - marginsHeight);
-	auto wantedContentHeight = qRound(_heightRatio * availableHeight)
-		- addedHeight;
+	const auto wanted = int(base::SafeRound(_heightRatio * availableHeight));
+	auto wantedContentHeight = wanted - addedHeight;
 	auto contentHeight = marginsHeight + std::clamp(
 		wantedContentHeight,
 		_minContentHeight,

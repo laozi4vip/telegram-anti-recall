@@ -44,14 +44,19 @@ class DynamicImage;
 	int loopLimit = 0);
 [[nodiscard]] std::shared_ptr<DynamicImage> MakePhotoThumbnail(
 	not_null<PhotoData*> photo,
-	FullMsgId fullId);
+	FullMsgId fullId,
+	bool forceRound = false);
 [[nodiscard]] std::shared_ptr<DynamicImage> MakePhotoThumbnailCenterCrop(
 	not_null<PhotoData*> photo,
 	FullMsgId fullId);
 [[nodiscard]] std::shared_ptr<DynamicImage> MakeDocumentThumbnail(
 	not_null<DocumentData*> document,
-	FullMsgId fullId);
+	FullMsgId fullId,
+	bool forceRound = false);
 [[nodiscard]] std::shared_ptr<DynamicImage> MakeDocumentThumbnail(
+	not_null<DocumentData*> document,
+	Data::FileOrigin origin);
+[[nodiscard]] std::shared_ptr<DynamicImage> MakeDocumentThumbnailFit(
 	not_null<DocumentData*> document,
 	Data::FileOrigin origin);
 [[nodiscard]] std::shared_ptr<DynamicImage> MakeDocumentThumbnailCenterCrop(

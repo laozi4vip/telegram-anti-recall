@@ -45,6 +45,7 @@ public:
 	void unregisterLeaveSubscription(not_null<QWidget*> widget) override;
 
 	QString emojiCacheFolder() override;
+	QString fontsCacheFolder() override;
 	QString openglCheckFilePath() override;
 	QString angleBackendFilePath() override;
 
@@ -63,6 +64,7 @@ public:
 		const QVariant &context) override;
 	bool copyPreOnClick(const QVariant &context) override;
 	rpl::producer<> forcePopupMenuHideRequests() override;
+	void preparePopupMenu(not_null<QWidget*> widget) override;
 	const Ui::Emoji::One *defaultEmojiVariant(
 		const Ui::Emoji::One *emoji) override;
 

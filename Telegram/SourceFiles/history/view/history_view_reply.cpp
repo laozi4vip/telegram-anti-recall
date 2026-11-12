@@ -268,6 +268,28 @@ auto CreateBackgroundGiftInstance(
 		Data::CustomEmojiSizeTag::Normal);
 }
 
+void FillPreviewSpoiler(
+		QPainter &p,
+		QRect rect,
+		const QPixmap &preview,
+		const Ui::SpoilerMessFrame &frame,
+		QImage &cache) {
+	const auto ratio = style::DevicePixelRatio();
+	const auto full = rect.size() * ratio;
+	if (cache.size() != full) {
+		cache = QImage(full, QImage::Format_ARGB32_Premultiplied);
+		cache.setDevicePixelRatio(ratio);
+	}
+	cache.fill(Qt::transparent);
+	const auto to = QRect(QPoint(), rect.size());
+	auto q = QPainter(&cache);
+	Ui::FillSpoilerRect(q, to, frame);
+	q.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+	q.drawPixmap(to, preview);
+	q.end();
+	p.drawImage(rect, cache);
+}
+
 void FillBackgroundEmoji(
 		QPainter &p,
 		const QRect &rect,
@@ -395,8 +417,6 @@ void Reply::update(
 	_hasPreview = hasPreview ? 1 : 0;
 	_displaying = data->displaying() ? 1 : 0;
 	_multiline = data->multiline() ? 1 : 0;
-	_replyToStory = (fields.storyId != 0);
-	_replyToPoll = (messagePoll && !pollAnswer) ? 1 : 0;
 	const auto hasQuoteIcon = _displaying
 		&& fields.manualQuote
 		&& !fields.quote.empty();
@@ -425,13 +445,17 @@ void Reply::update(
 			.margin = QMargins(0, st::lineWidth, st::lineWidth, 0),
 		})).append(pollAnswer->text)
 		: messagePoll
-		? TextWithEntities().append(messagePoll->question)
+		? Ui::Text::Colorized(
+			Ui::Text::IconEmoji(&st::historyPollReplyIcon)
+		).append(messagePoll->question)
 		: (message && (fields.quote.empty() || !fields.manualQuote))
 		? message->inReplyText()
 		: !fields.quote.empty()
 		? fields.quote
 		: story
-		? story->inReplyText()
+		? Ui::Text::Colorized(
+			Ui::Text::IconEmoji(&st::historyReplyStoryIcon)
+		).append(story->inReplyText())
 		: externalMedia
 		? externalMedia->toPreview({
 			.hideSender = true,
@@ -453,7 +477,9 @@ void Reply::update(
 	if (_displaying) {
 		setLinkFrom(view, data);
 		const auto media = message ? message->media() : nullptr;
-		if (!media || !media->hasReplyPreview() || !media->hasSpoiler()) {
+		if (!media
+			|| !media->hasReplyPreview()
+			|| !media->hasSpoilerForPreview()) {
 			_spoiler = nullptr;
 		} else if (!_spoiler) {
 			_spoiler = std::make_unique<Ui::SpoilerAnimation>(repaint);
@@ -680,15 +706,10 @@ void Reply::updateName(
 		+ (_hasQuoteIcon
 			? st::messageTextStyle.blockquote.icon.width()
 			: 0);
-	const auto storySkip = fields.storyId
-		? (st::dialogsMiniReplyStory.skipText
-			+ st::dialogsMiniReplyStory.icon.icon.width())
-		: 0;
 	const auto optimalTextSize = _multiline
 		? countMultilineOptimalSize(previewSkip)
 		: QSize(
 			(previewSkip
-				+ storySkip
 				+ std::min(_text.maxWidth(), st::maxSignatureSize)),
 			st::normalFont->height);
 	_maxWidth = std::max(nameMaxWidth, optimalTextSize.width());
@@ -966,13 +987,15 @@ void Reply::paint(
 					p.drawPixmap(to.x(), to.y(), preview);
 					if (_spoiler) {
 						view->clearCustomEmojiRepaint();
-						Ui::FillSpoilerRect(
+						FillPreviewSpoiler(
 							p,
 							to,
+							preview,
 							Ui::DefaultImageSpoiler().frame(
 								_spoiler->index(
 									context.now,
-									pausedSpoiler)));
+									pausedSpoiler)),
+							_spoilerCache);
 					}
 				}
 			}
@@ -1021,26 +1044,6 @@ void Reply::paint(
 					owned.emplace(cache->icon);
 					copy->linkFg = owned->color();
 					replyToTextPalette = &*copy;
-				}
-				if (_replyToStory) {
-					st::dialogsMiniReplyStory.icon.icon.paint(
-						p,
-						textLeft + firstLineSkip,
-						textTop,
-						w + 2 * x,
-						replyToTextPalette->linkFg->c);
-					firstLineSkip += st::dialogsMiniReplyStory.skipText
-						+ st::dialogsMiniReplyStory.icon.icon.width();
-				}
-				if (_replyToPoll) {
-					st::historyPollReplyIcon.paint(
-						p,
-						textLeft + firstLineSkip,
-						textTop,
-						w + 2 * x,
-						replyToTextPalette->linkFg->c);
-					firstLineSkip += st::historyPollReplyIconSkip
-						+ st::historyPollReplyIcon.width();
 				}
 				_text.draw(p, {
 					.position = { textLeft, textTop },

@@ -37,8 +37,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 #include "window/window_session_controller.h"
 #include "styles/style_media_player.h"
-#include "styles/style_media_view.h"
-#include "styles/style_chat.h" // expandedMenuSeparator.
 
 namespace Media {
 namespace Player {
@@ -680,7 +678,8 @@ void Widget::updateTimeText(const TrackState &state) {
 	_lastDurationMs = (state.length * 1000LL) / frequency;
 
 	if (document->loading()) {
-		_time = QString::number(qRound(document->progress() * 100)) + '%';
+		const auto progress = document->progress() * 100;
+		_time = QString::number(int(base::SafeRound(progress))) + '%';
 		_playbackSlider->setDisabled(true);
 	} else {
 		display = display / frequency;

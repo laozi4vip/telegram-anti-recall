@@ -19,6 +19,10 @@ namespace Bot {
 struct SendCommandRequest;
 } // namespace Bot
 
+namespace ChatHelpers {
+struct FileChosen;
+} // namespace ChatHelpers
+
 namespace SendMenu {
 struct Details;
 } // namespace SendMenu
@@ -81,6 +85,7 @@ struct SectionShow;
 enum class Column;
 class HistoryHider;
 struct SeparateId;
+struct SavedChat;
 } // namespace Window
 
 namespace Calls {
@@ -94,6 +99,7 @@ class Changelogs;
 } // namespace Core
 
 extern const char kForceComposeSearchOneColumn[];
+extern const char kOptionUseNewChatView[];
 
 class MainWidget final
 	: public Ui::RpWidget
@@ -123,6 +129,7 @@ public:
 	void showAnimated(QPixmap oldContentCache, bool back = false);
 
 	void activate();
+	void handleStartFiles(QStringList paths);
 
 	void windowShown();
 
@@ -138,12 +145,14 @@ public:
 		const SectionShow &params);
 	void updateColumnLayout();
 	bool stackIsEmpty() const;
+	[[nodiscard]] std::vector<Window::SavedChat> chatStackForSave() const;
 	bool showBackFromStack(const SectionShow &params);
 	void orderWidgets();
 	QPixmap grabForShowAnimation(const Window::SectionSlideParams &params);
 	void checkMainSectionToLayer();
 
 	[[nodiscard]] SendMenu::Details sendMenuDetails() const;
+	bool processChosenSticker(ChatHelpers::FileChosen &&chosen);
 
 	[[nodiscard]] bool animatingShow() const;
 
@@ -260,7 +269,8 @@ private:
 	void exportTopBarHeightUpdated();
 
 	Window::SectionSlideParams prepareShowAnimation(
-		bool willHaveTopBarShadow);
+		bool willHaveTopBarShadow,
+		bool fromBottom);
 	void showNewSection(
 		std::shared_ptr<Window::SectionMemento> memento,
 		const SectionShow &params);
@@ -269,7 +279,9 @@ private:
 	Window::SectionSlideParams prepareThirdSectionAnimation(Window::SectionWidget *section);
 
 	// All this methods use the prepareShowAnimation().
-	Window::SectionSlideParams prepareMainSectionAnimation(Window::SectionWidget *section);
+	Window::SectionSlideParams prepareMainSectionAnimation(
+		Window::SectionWidget *section,
+		bool fromBottom);
 	Window::SectionSlideParams prepareHistoryAnimation(PeerId historyPeerId);
 	Window::SectionSlideParams prepareDialogsAnimation();
 

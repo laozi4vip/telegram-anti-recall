@@ -21,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/text/text_utilities.h"
 #include "ui/basic_click_handlers.h"
 #include "ui/emoji_config.h"
+#include "ui/toast/toast.h"
 #include "lang/lang_keys.h"
 #include "platform/platform_specific.h"
 #include "boxes/url_auth_box.h"
@@ -33,12 +34,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_session_controller.h"
 #include "mainwindow.h"
 #include "base/unixtime.h"
+#include "styles/style_chat_helpers.h"
 
 #include <QtCore/QDateTime>
 #include <QtCore/QLocale>
 
 // AyuGram includes
+#include "ayu/ayu_settings.h"
 #include "ayu/ayu_url_handlers.h"
+#include "ayu/features/streamer_mode/streamer_mode.h"
 
 
 namespace Core {
@@ -251,14 +255,14 @@ Ui::Text::MarkedContext TextContext(TextContextArgs &&args) {
 		? Factory([simple, loop = args.customEmojiLoopLimit](
 				QStringView data,
 				const Context &context) {
-			return std::make_unique<Ui::Text::LimitedLoopsEmoji>(
+			return MakeWrappedEmoji<Ui::Text::LimitedLoopsEmoji>(
 				simple(data, context),
 				loop);
 		})
 		: Factory([simple](
 				QStringView data,
 				const Context &context) {
-			return std::make_unique<Ui::Text::FirstFrameEmoji>(
+			return MakeWrappedEmoji<Ui::Text::FirstFrameEmoji>(
 				simple(data, context));
 		});
 	args.details.session = session;
@@ -284,6 +288,10 @@ void UiIntegration::unregisterLeaveSubscription(not_null<QWidget*> widget) {
 
 QString UiIntegration::emojiCacheFolder() {
 	return cWorkingDir() + "tdata/emoji";
+}
+
+QString UiIntegration::fontsCacheFolder() {
+	return cWorkingDir() + "tdata/fonts";
 }
 
 QString UiIntegration::openglCheckFilePath() {
@@ -322,6 +330,9 @@ std::shared_ptr<ClickHandler> UiIntegration::createLinkHandler(
 	const auto my = std::any_cast<Core::TextContextDetails>(&context.other);
 	switch (data.type) {
 	case EntityType::Url:
+		if (data.data.startsWith(u"internal:"_q, Qt::CaseInsensitive)) {
+			return nullptr;
+		}
 		return (!data.data.isEmpty()
 			&& UrlClickHandler::IsSuspicious(data.data))
 			? std::make_shared<HiddenUrlClickHandler>(data.data)
@@ -434,6 +445,11 @@ bool UiIntegration::handleUrlClick(
 		}
 	}
 
+	if (AyuUrlHandlers::IsUnsafeExternalUrl(url)) {
+		LOG(("AyuGram: Blocked opening unsafe url: %1").arg(url));
+		return true;
+	}
+
 	if (AyuUrlHandlers::TryHandleSpotify(url)) {
 		return true;
 	}
@@ -451,15 +467,29 @@ bool UiIntegration::handleUrlClick(
 bool UiIntegration::copyPreOnClick(const QVariant &context) {
 	const auto my = context.value<ClickHandlerContext>();
 	if (const auto window = my.sessionWindow.get()) {
-		window->showToast(tr::lng_code_copied(tr::now));
+		window->showToast({
+			.text = { tr::lng_code_copied(tr::now) },
+			.iconLottie = u"toast/copy"_q,
+			.iconLottieSize = st::toastLottieIconSize,
+		});
 	} else if (my.show) {
-		my.show->showToast(tr::lng_code_copied(tr::now));
+		my.show->showToast({
+			.text = { tr::lng_code_copied(tr::now) },
+			.iconLottie = u"toast/copy"_q,
+			.iconLottieSize = st::toastLottieIconSize,
+		});
 	}
 	return true;
 }
 
 rpl::producer<> UiIntegration::forcePopupMenuHideRequests() {
 	return Core::App().passcodeLockChanges() | rpl::to_empty;
+}
+
+void UiIntegration::preparePopupMenu(not_null<QWidget*> widget) {
+	if (AyuSettings::getInstance().streamerMode()) {
+		AyuFeatures::StreamerMode::hideWidgetWindow(widget);
+	}
 }
 
 const Ui::Emoji::One *UiIntegration::defaultEmojiVariant(

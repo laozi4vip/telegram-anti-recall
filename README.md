@@ -99,7 +99,28 @@ AyuGramDesktop 原版功能包括：
 
 ### Windows
 
-Follow [official guide](https://github.com/AyuGram/AyuGramDesktop/blob/dev/docs/building-win-x64.md) if you want to build by yourself.
+#### Official
+
+You can download prebuilt Windows binary from [Releases tab](https://github.com/AyuGram/AyuGramDesktop/releases) or from
+the [Telegram channel](https://t.me/AyuGramReleases).
+
+#### Winget
+
+```bash
+winget install RadolynLabs.AyuGramDesktop
+```
+
+#### Scoop
+
+```bash
+scoop bucket add extras
+scoop install ayugram
+```
+
+#### Self-built
+
+Follow [official guide](https://github.com/AyuGram/AyuGramDesktop/blob/dev/docs/building-win.md) if you want to
+build by yourself.
 
 Make sure you have these components installed with VS Build Tools:
 - C++ MFC latest (x86 & x64)
@@ -108,11 +129,76 @@ Make sure you have these components installed with VS Build Tools:
 
 ### macOS
 
+#### Official
+
+You can download prebuilt macOS package from [Releases tab](https://github.com/AyuGram/AyuGramDesktop/releases).
+
+#### Homebrew
+
+```bash
+brew install --cask ayugram
+```
+
+#### Self-built
+
 Follow the [official guide](https://github.com/AyuGram/AyuGramDesktop/blob/dev/docs/building-mac.md).
 
-### Linux
+### Arch Linux
 
-Follow the [official guide](https://github.com/AyuGram/AyuGramDesktop/blob/dev/docs/building-linux.md).
+#### From source (recommended)
+
+Install `ayugram-desktop` from [AUR](https://aur.archlinux.org/packages/ayugram-desktop).
+
+#### Prebuilt binaries
+
+Install `ayugram-desktop-bin` from [AUR](https://aur.archlinux.org/packages/ayugram-desktop-bin).
+
+Note: these binaries aren't officially maintained by us.
+
+### NixOS
+
+#### Flake (recommended)
+
+Install `ayugram-desktop` from [ndfined-crp/ayugram-desktop](https://github.com/ndfined-crp/ayugram-desktop)
+
+#### Nixpkgs
+
+Install `ayugram-desktop` from [nixpkgs](https://search.nixos.org/packages?channel=unstable&show=ayugram-desktop)
+
+### ALT Linux
+
+[Sisyphus](https://packages.altlinux.org/en/sisyphus/srpms/ayugram-desktop/)
+
+### Gentoo Linux
+
+See [this repository](https://codeberg.org/OverLessArtem/ayugram-ebuild-gentoo) for installation manual.
+
+### Void Linux
+See [this repository](https://codeberg.org/OverLessArtem/ayugram-template-void) for installation manual.
+
+### EPM
+
+`epm play ayugram`
+
+### Fedora
+
+From [RPM Fusion](https://admin.rpmfusion.org/pkgdb/package/free/ayugram-desktop/) repository.
+
+```bash
+dnf install ayugram-desktop
+```
+
+### Any other Linux distro
+
+Flatpak: https://github.com/0FL01/AyuGramDesktop-flatpak
+
+Or follow the [official guide](https://github.com/AyuGram/AyuGramDesktop/blob/dev/docs/building-linux.md).
+
+## Donation
+
+Enjoy using **AyuGram**? Consider sending us a tip!
+
+[Here's available methods.](https://docs.ayugram.one/donate/)
 
 ---
 
@@ -120,3 +206,6 @@ Follow the [official guide](https://github.com/AyuGram/AyuGramDesktop/blob/dev/d
 
 - 原项目：[AyuGram/AyuGramDesktop](https://github.com/AyuGram/AyuGramDesktop)
 - Telegram Desktop：[telegramdesktop/tdesktop](https://github.com/telegramdesktop/tdesktop)
+- 其他客户端：[Kotatogram](https://github.com/kotatogram/kotatogram-desktop)、[64Gram](https://github.com/TDesktop-x64/tdesktop)、[Forkgram](https://github.com/forkgram/tdesktop)
+- 使用的库：[JSON for Modern C++](https://github.com/nlohmann/json)、[SQLite](https://github.com/sqlite/sqlite)、[sqlite_orm](https://github.com/fnc12/sqlite_orm)、[androidx sources](https://github.com/androidx/androidx)
+- 图标：[Solar Icon Set](https://www.figma.com/community/file/1166831539721848736)
