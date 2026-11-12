@@ -17,6 +17,7 @@
 #include "data/data_channel.h"
 #include "data/data_file_origin.h"
 #include "data/data_forum_topic.h"
+#include "data/data_peer_id.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
 #include "history/history.h"
@@ -66,12 +67,12 @@ void GenerateItems(
 	not_null<History*> history,
 	AyuMessageBase message,
 	Fn<void(OwnedItem item, TimeId sentDate, MsgId)> callback) {
-	PeerData *from = history->owner().userLoaded(message.fromId);
+	PeerData *from = history->owner().userLoaded(UserId(message.fromId));
 	if (!from) {
-		from = history->owner().channelLoaded(message.fromId);
+		from = history->owner().channelLoaded(ChannelId(message.fromId));
 	}
 	if (!from) {
-		from = reinterpret_cast<PeerData*>(history->owner().chatLoaded(message.fromId));
+		from = history->owner().chatLoaded(ChatId(message.fromId));
 	}
 	const auto date = message.entityCreateDate;
 	const auto addPart = [&](
@@ -82,6 +83,7 @@ void GenerateItems(
 		return callback(OwnedItem(delegate, item), sentDate, realId);
 	};
 
+	const auto media = AyuMapper::deserializeMessageMedia(message.documentSerialized);
 	const auto makeSimpleTextMessage = [&](TextWithEntities &&text)
 	{
 		base::flags<MessageFlag> flags = MessageFlag::AdminLogEntry;
@@ -106,7 +108,7 @@ void GenerateItems(
 																: QString("unknown user: %1").arg(message.fromId),
 									},
 									std::move(text),
-									MTP_messageMediaEmpty());
+									media);
 	};
 
 	const auto addSimpleTextMessage = [&](TextWithEntities &&text)

@@ -17,6 +17,7 @@
 
 - **实时显示**：对方删除消息时，消息立即变为删除状态显示，无需重启
 - **重启后自动恢复**：程序重启后，已保存的删除消息会自动从本地数据库重新加载到聊天界面
+- **图片与视频防撤回**：被删除的图片、视频（含 GIF、语音/视频消息、文件）同样会被保存并重新注入，可正常预览与下载；相册（grouped media）保持分组
 - **发送方向正确**：重新加载的删除消息会根据原始发送者正确显示在左侧（对方消息）或右侧（自己的消息）
 - **纯本地实现**：所有删除消息仅保存在本地数据库，不会向 Telegram 服务器发送任何数据，不影响服务器端数据
 - **独立开关**：可在设置中随时开启或关闭
@@ -39,17 +40,26 @@
 |------|----------|
 | `ayu_settings.h` | 新增 `keepDeletedMessagesInChat` 设置项（默认开启） |
 | `ayu_settings.cpp` | 新增设置项的读写逻辑 |
-| `messages_storage.cpp` | 新增 `reinjectDeletedMessages()`：从本地数据库读取已删除消息并重新注入聊天界面；根据 `fromId` 设置 `MessageFlag::Outgoing`，确保消息发送方向正确 |
+| `messages_storage.cpp` | 新增 `reinjectDeletedMessages()`：从本地数据库读取已删除消息并重新注入聊天界面；根据 `fromId` 设置 `MessageFlag::Outgoing`，确保消息发送方向正确；保存/恢复消息媒体 |
 | `messages_storage.h` | 新增 `reinjectDeletedMessages()` 声明 |
+| `ayu_mapper.cpp/.h` | 新增 `serializeMessageMedia()` / `deserializeMessageMedia()`：把消息的图片、视频等媒体序列化为 TL 字节存入数据库，并在重新注入时还原为 `MTPMessageMedia` |
+| `ayu/ui/message_history/history_item.cpp` | 删除消息历史查看器同样渲染图片与视频 |
 | `settings_chats.cpp` | 在聊天设置页面新增 UI 开关 |
 | `history.cpp` | 在 `addOlderSlice` 中调用 `reinjectDeletedMessages()` 后追加 `checkLocalMessages()`，确保重新注入的消息正确显示在聊天视图 |
 
 ### 实现原理
 
-1. **拦截删除**：当收到服务器发来的消息删除通知时，不销毁消息对象，而是调用 `setDeleted()` 标记为已删除，并保存到本地数据库
-2. **重新注入**：程序重启后，打开聊天时调用 `reinjectDeletedMessages()`，从数据库读取已删除消息，使用本地生成的 client-side ID 创建消息对象，注册到聊天历史中
-3. **正确显示**：通过比较消息的 `fromId` 与当前用户 ID，设置 `MessageFlag::Outgoing` 标志，确保自己发送的消息显示在右侧，对方发送的消息显示在左侧
-4. **聊天视图刷新**：在 `reinjectDeletedMessages()` 之后调用 `checkLocalMessages()`，将 client-side 消息插入到聊天视图的 blocks 中
+1. **拦截删除**：当收到服务器发来的消息删除通知时，不销毁消息对象，而是调用 `setDeleted()` 标记为已删除，连同文本、媒体信息一起保存到本地数据库
+2. **媒体序列化**：`AyuMapper::serializeMessageMedia()` 从 `PhotoData` / `DocumentData` 重建出合法的 `MTPPhoto` / `MTPDocument`（含 id、access_hash、file_reference、dc、尺寸、时长、缩略图、属性等），封装为 `MTP_messageMediaPhoto` / `MTP_messageMediaDocument` 并按 TL 格式序列化到数据库的 `documentSerialized` 字段；媒体类型标记写入 `documentType`
+3. **重新注入**：程序重启后，打开聊天时调用 `reinjectDeletedMessages()`，从数据库读取已删除消息，反序列化出 `MTPMessageMedia` 并传给 `makeMessage()`；`HistoryItem::CreateMedia()` 会重新向 `Data::Session` 注册 photo/document，因此可正常预览与下载。使用本地生成的 client-side ID 创建消息对象，注册到聊天历史中
+4. **正确显示**：通过比较消息的 `fromId` 与当前用户 ID，设置 `MessageFlag::Outgoing` 标志，确保自己发送的消息显示在右侧，对方发送的消息显示在左侧；`groupedId` 一并恢复以保持相册分组
+5. **聊天视图刷新**：在 `reinjectDeletedMessages()` 之后调用 `checkLocalMessages()`，将 client-side 消息插入到聊天视图的 blocks 中
+
+### 说明
+
+- 首次运行新版本后，只有**新删除**的图片/视频才会带上媒体信息；旧版本已保存的文本消息仍按原样显示
+- 媒体以 Telegram 远程文件标识（id / access_hash / file_reference / dc）保存，只要文件在服务器上仍存在即可重新下载；若对方删除的是一次性（TTL）媒体或服务器已清理该文件，则可能无法重新下载
+- 网页预览、投票、游戏、联系人等非图片/视频媒体仍按纯文本方式保留
 
 ### 安全性
 

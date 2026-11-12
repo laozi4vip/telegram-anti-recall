@@ -18,4 +18,7 @@ std::pair<std::string, std::vector<char>> serializeTextWithEntities(not_null<His
 [[nodiscard]] MTPVector<MTPMessageEntity> deserializeTextWithEntities(std::vector<char> serialized);
 int mapItemFlagsToMTPFlags(not_null<HistoryItem*> item);
 
+[[nodiscard]] std::vector<char> serializeMessageMedia(not_null<HistoryItem*> item);
+[[nodiscard]] MTPMessageMedia deserializeMessageMedia(std::vector<char> serialized);
+
 } // namespace AyuMapper
