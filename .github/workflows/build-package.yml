@@ -63,6 +63,18 @@ jobs:
           python -m pip install --upgrade pip
           choco install -y ninja 7zip.install InnoSetup --no-progress
 
+      # Building the 34 third-party libraries takes over an hour, so cache them.
+      # The key includes the build script and the Qt version it selects.
+      - name: Cache prepared libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            Libraries
+            ThirdParty
+          key: libs-${{ runner.os }}-${{ hashFiles('Telegram/build/prepare/prepare.py', 'Telegram/build/version') }}
+          restore-keys: |
+            libs-${{ runner.os }}-
+
       - name: Prepare libraries
         shell: cmd
         run: |
@@ -125,18 +137,29 @@ jobs:
           cmake --build out --config Release --target Telegram -- /p:CL_MPCount=2 /p:UseMultiToolTask=true /p:EnforceProcessCountAcrossBuilds=true /m:2
         timeout-minutes: 420
 
+      # Only retry when the compiler ran out of heap; a genuine compile error
+      # would fail identically and waste the whole build budget.
       - name: Split mocs compilation unit
+        id: mocs
         if: steps.build.outcome == 'failure'
         shell: pwsh
         run: |
+          $exe = "${{ github.workspace }}\out\Release\AyuGram.exe"
+          if (Test-Path $exe) {
+            Write-Host "AyuGram.exe exists, the build produced output; not retrying"
+            "retry=no" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          }
           $mocsFile = "${{ github.workspace }}\out\Telegram\Telegram_autogen\mocs_compilation_Release.cpp"
           if (-not (Test-Path $mocsFile)) {
             Write-Host "mocs_compilation_Release.cpp not found, nothing to split"
+            "retry=no" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
           $lines = Get-Content $mocsFile
           if ($lines.Count -le 50) {
             Write-Host "mocs file has $($lines.Count) lines, no split needed"
+            "retry=no" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
           $chunkSize = [Math]::Ceiling($lines.Count / 4)
@@ -148,9 +171,10 @@ jobs:
             Set-Content -Path "$mocsDir\mocs_compilation_Release_p$($i + 1).cpp" -Value $lines[$start..$end]
           }
           Write-Host "Split mocs_compilation_Release.cpp into 4 parts"
+          "retry=yes" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Rebuild after mocs split
-        if: steps.build.outcome == 'failure'
+        if: steps.mocs.outputs.retry == 'yes'
         shell: cmd
         run: |
           cd /d ${{ github.workspace }}
