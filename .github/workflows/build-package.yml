@@ -61,8 +61,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          choco install -y ninja 7zip.install innosetup --no-progress
-
+          choco install -y ninja 7zip.install InnoSetup --no-progress
       - name: Prepare libraries
         shell: cmd
         run: |
@@ -220,26 +219,35 @@ jobs:
           if (-not $version) { $version = "0.0.0" }
           $versionFull = $version
 
-          # setup.iss expects these defines; ReleasePath points at the staged folder.
+          # setup.iss expects these defines. Inno Setup does not accept a value
+          # with a trailing backslash reliably, so both paths use forward slashes.
+          $stageIss = $stage -replace '\\', '/'
+          $buildIss = $build -replace '\\', '/'
           $issArgs = @(
             "/DMyAppVersion=$version",
             "/DMyAppVersionFull=$versionFull",
             "/DMyBuildTarget=win64",
-            "/DReleasePath=$stage",
-            "/DSourcePath=$build\",
+            "/DReleasePath=$stageIss",
+            "/DSourcePath=$buildIss/",
             "/DMyOutputBaseFilename=ayu-anti-recall-setup-x64.$version"
           )
           $iss = "$build\setup.iss"
 
-          # Two upstream assumptions do not hold for this fork: the binary is
-          # named AyuGram.exe, and there is no signing certificate in CI.
+          # Upstream assumes the binary is named Telegram.exe and that a signing
+          # certificate exists; neither holds for this fork.
           $issContent = Get-Content $iss -Raw
           $issContent = $issContent -replace '(?m)^SignTool=sha256\r?\n', ''
-          $issContent = $issContent -replace '\{#ReleasePath\}\\Telegram\.exe', '{#ReleasePath}\AyuGram.exe'
+          $issContent = $issContent -replace '\{#ReleasePath\}\\Telegram\.exe', '{#ReleasePath}/AyuGram.exe'
+          $issContent = $issContent -replace '\{app\}\\Telegram\.exe', '{app}\AyuGram.exe'
           $patchedIss = "$stage\setup.iss"
           Set-Content -Path $patchedIss -Value $issContent -NoNewline
 
-          $iscc = (Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          # InnoSetup's chocolatey package registers ISCC.exe on PATH; fall back
+          # to the default install folder if the shim is not visible yet.
+          $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) {
+            $iscc = (Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          }
           if (-not $iscc) { Write-Error "ISCC.exe not found"; exit 1 }
           Write-Host "Using $iscc"
 
