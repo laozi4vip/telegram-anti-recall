@@ -15,6 +15,7 @@
 #include "core/application.h"
 #include "core/click_handler_types.h"
 #include "data/data_channel.h"
+#include "data/data_chat.h"
 #include "data/data_file_origin.h"
 #include "data/data_forum_topic.h"
 #include "data/data_peer_id.h"
