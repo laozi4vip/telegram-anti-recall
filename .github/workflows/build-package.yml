@@ -294,21 +294,26 @@ jobs:
           Write-Host "Created $($setup.FullName)"
           "SETUP_NAME=$($setup.Name)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      # Upload even when a later packaging step fails, so a working zip is
+      # never lost to an installer problem.
       - name: Upload portable zip
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-anti-recall-portable-win64
           path: ${{ github.workspace }}\out\package\*.zip
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload installer
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-anti-recall-installer-win64
           path: ${{ github.workspace }}\out\package\ayu-anti-recall-setup-x64*.exe
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload unpacked build
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: AyuGram-anti-recall-unpacked-win64
