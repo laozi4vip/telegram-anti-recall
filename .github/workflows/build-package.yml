@@ -137,6 +137,15 @@ jobs:
           cmake --build out --config Release --target Telegram -- /p:CL_MPCount=2 /p:UseMultiToolTask=true /p:EnforceProcessCountAcrossBuilds=true /m:2
         timeout-minutes: 420
 
+      # The MSBuild target for Telegram does not pull in the Updater project, so
+      # build it explicitly for the in-app updater and the installer.
+      - name: Build Updater
+        continue-on-error: true
+        shell: cmd
+        run: |
+          cd /d ${{ github.workspace }}
+          cmake --build out --config Release --target Updater -- /p:CL_MPCount=2 /p:UseMultiToolTask=true /m:2
+
       # Only retry when the compiler ran out of heap; a genuine compile error
       # would fail identically and waste the whole build budget.
       - name: Split mocs compilation unit
@@ -258,12 +267,13 @@ jobs:
           )
           $iss = "$build\setup.iss"
 
-          # Upstream assumes the binary is named Telegram.exe and that a signing
-          # certificate exists; neither holds for this fork.
+          # Upstream assumes the binary is named Telegram.exe, that a signing
+          # certificate exists, and that Updater.exe is always built.
           $issContent = Get-Content $iss -Raw
           $issContent = $issContent -replace '(?m)^SignTool=sha256\r?\n', ''
           $issContent = $issContent -replace '\{#ReleasePath\}\\Telegram\.exe', '{#ReleasePath}/AyuGram.exe'
           $issContent = $issContent -replace '\{app\}\\Telegram\.exe', '{app}\AyuGram.exe'
+          $issContent = $issContent -replace '(\{#ReleasePath\}[^"]*Updater\.exe"; DestDir: "\{app\}"; Flags: ignoreversion)', '$1 skipifsourcedoesntexist'
           $patchedIss = "$stage\setup.iss"
           Set-Content -Path $patchedIss -Value $issContent -NoNewline
 
