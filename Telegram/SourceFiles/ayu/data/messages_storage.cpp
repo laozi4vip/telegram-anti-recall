@@ -16,6 +16,7 @@
 #include "data/data_session.h"
 #include "data/data_channel.h"
 #include "data/data_chat.h"
+#include "data/data_document.h"
 #include "data/data_user.h"
 #include "data/data_msg_id.h"
 #include "data/data_peer_id.h"
@@ -51,7 +52,7 @@ void map(not_null<HistoryItem*> item, AyuMessageBase &message) {
 
 	message.userId = userId;
 	message.dialogId = getDialogIdFromPeer(item->history()->peer);
-	message.groupedId = item->groupId().raw();
+	message.groupedId = ID(item->groupId().raw());
 	message.peerId = item->history()->peer->id.value & PeerId::kChatTypeMask;
 	message.fromId = item->from()->id.value & PeerId::kChatTypeMask;
 	if (item->topic()) {
@@ -236,8 +237,8 @@ void reinjectDeletedMessages(not_null<History*> history) {
 			.flags = flags,
 			.from = from ? from->id : PeerId(0),
 			.date = msg.date,
-			.groupedId = msg.groupedId,
 			.postAuthor = !msg.postAuthor.empty() ? QString::fromStdString(msg.postAuthor) : QString(),
+			.groupedId = uint64(msg.groupedId),
 		}, std::move(textAndEntities), media);
 
 		item->setDeleted();
