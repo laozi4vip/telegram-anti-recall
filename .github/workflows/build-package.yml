@@ -64,14 +64,15 @@ jobs:
           choco install -y ninja 7zip.install InnoSetup --no-progress
 
       # Building the 34 third-party libraries takes over an hour, so cache them.
-      # The key includes the build script and the Qt version it selects.
+      # The key tracks the app version only: keying on prepare.py would drop the
+      # cache every time the build script itself is adjusted.
       - name: Cache prepared libraries
         uses: actions/cache@v4
         with:
           path: |
             Libraries
             ThirdParty
-          key: libs-${{ runner.os }}-${{ hashFiles('Telegram/build/prepare/prepare.py', 'Telegram/build/version') }}
+          key: libs-${{ runner.os }}-${{ hashFiles('Telegram/build/version') }}
           restore-keys: |
             libs-${{ runner.os }}-
 
