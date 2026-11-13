@@ -24,6 +24,19 @@
 
 ---
 
+## 下载安装
+
+前往 [Releases](../../releases) 页面下载最新版本，提供两种形式：
+
+| 文件 | 说明 |
+|------|------|
+| `ayu-anti-recall-setup-x64.<版本>.exe` | 安装程序，自动创建开始菜单与桌面快捷方式，支持卸载 |
+| `AyuGram-anti-recall-portable-win64-<版本>.zip` | 便携版，解压后直接运行 `AyuGram\AyuGram.exe`，不写注册表 |
+
+> 仅提供 Windows x64 版本。首次启动若提示缺少运行库，请安装 [Visual C++ 运行库](https://aka.ms/vs/17/release/vc_redist.x64.exe)。
+
+---
+
 ## 使用方法
 
 1. 打开 AyuGram 设置 → 聊天设置（Chats）
