@@ -33,7 +33,10 @@
 | `ayu-anti-recall-setup-x64.<版本>.exe` | 安装程序，自动创建开始菜单与桌面快捷方式，支持卸载 |
 | `AyuGram-anti-recall-portable-win64-<版本>.zip` | 便携版，解压后直接运行 `AyuGram\AyuGram.exe`，不写注册表 |
 
-> 仅提供 Windows x64 版本。首次启动若提示缺少运行库，请安装 [Visual C++ 运行库](https://aka.ms/vs/17/release/vc_redist.x64.exe)。
+> 仅提供 **Windows x64** 版本，支持 Windows 7 及以上。
+> 程序使用静态链接的 C++ 运行库（`/MT`），**无需**额外安装 Visual C++ 运行库。
+
+当前版本：**v7.2.9** —— 详见 [发布说明](docs/RELEASE_NOTES.md)。
 
 ---
 
