@@ -44,13 +44,14 @@
 - **一次性（TTL）媒体**：若对方发送的是阅后即焚内容，或服务器已清理该文件，即使有媒体标识也可能无法重新下载
 - **其他媒体类型**：网页预览、投票、游戏、联系人等非图片/视频媒体仍按纯文本方式保留
 - **纯本地实现**：所有删除消息仅保存在本地数据库（`tdata/ayudata.db`），不会向 Telegram 服务器发送任何数据，不影响服务器端记录
+- **无应用内自动更新**：本包为自行构建版本，未包含 `Updater.exe`，因此不提供应用内自动更新；需要升级时请重新下载安装包
 
 ## 校验信息
 
 | 文件 | SHA256 |
 |------|--------|
-| `AyuGram-anti-recall-portable-win64-7.2.9.zip` | `712AB9F370D05CB4277B64E5246595A84438439A89EA11EE2FFAD6FFDCB04160` |
-| `ayu-anti-recall-setup-x64.7.2.9.exe` | `DBA5D876F22081F431CA1500C919F36D5245CEECFBBCBE5F008E335AB903E210` |
+| `AyuGram-anti-recall-portable-win64-7.2.9.zip` | `05FFD8223F5608BFEB7E69DF38F8AE5C4444E81B3F053B90BB8F6D7E3B7BE2E0` |
+| `ayu-anti-recall-setup-x64.7.2.9.exe` | `5CC27EA51CED9B9374F5C01A743F234C07AB0123FAA3B430ABD04178CEF1CFDD` |
 
 ---
 
