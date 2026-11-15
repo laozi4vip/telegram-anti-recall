@@ -1,0 +1,162 @@
+name: Cache Probe
+
+# Throwaway probe for the CI fixes. Verifies, cheaply, what would otherwise
+# only surface after a multi-hour build:
+#   1. actions/cache accepts the paths prepare.py installs into.
+#   2. The vcvars helper satisfies every variable prepare.py and breakpad's
+#      gyp need, so the node20 setup action can be dropped.
+on:
+  push:
+    branches: [ cache-probe ]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: cache-probe-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cache-paths:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - name: Seed the directories prepare.py would create
+        shell: pwsh
+        run: |
+          $parent = Split-Path "${{ github.workspace }}" -Parent
+          New-Item -ItemType Directory -Force -Path "$parent\Libraries\nested" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$parent\ThirdParty\nested" | Out-Null
+          Set-Content -Path "$parent\Libraries\probe.txt" -Value "libs"
+          Set-Content -Path "$parent\Libraries\nested\probe.txt" -Value "libs-nested"
+          Set-Content -Path "$parent\ThirdParty\probe.txt" -Value "third"
+          "LIBS_DIR=$parent\Libraries" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "THIRD_DIR=$parent\ThirdParty" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Save with normalized absolute paths
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ env.LIBS_DIR }}
+            ${{ env.THIRD_DIR }}
+          key: probe-absolute-v6-${{ github.run_id }}
+
+      - name: Restore it back and prove the contents survived
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ env.LIBS_DIR }}
+            ${{ env.THIRD_DIR }}
+          key: probe-absolute-v6-${{ github.run_id }}
+
+      - name: Check restored files
+        shell: pwsh
+        run: |
+          $missing = @()
+          foreach ($p in @("${{ env.LIBS_DIR }}\probe.txt",
+                           "${{ env.LIBS_DIR }}\nested\probe.txt",
+                           "${{ env.THIRD_DIR }}\probe.txt")) {
+            if (Test-Path $p) { Write-Host "present: $p" } else { $missing += $p }
+          }
+          if ($missing.Count) {
+            Write-Host "::error::cache round trip lost: $($missing -join ', ')"
+            exit 1
+          }
+
+  msvc-env:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      # Mirrors the real workflow's MSVC steps verbatim.
+      - name: Setup MSVC (Windows 7 compatible toolset)
+        id: msvc1444
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          . "${{ github.workspace }}\.github\scripts\set-msvc-env.ps1" -Toolset 14.44
+
+      - name: Assert the variables prepare.py and gyp need
+        shell: pwsh
+        run: |
+          $problems = @()
+          foreach ($v in @('Platform', 'PATH', 'INCLUDE', 'LIB', 'LIBPATH',
+                           'VSCMD_ARG_TGT_ARCH', 'VCToolsVersion', 'VSINSTALLDIR')) {
+            if (-not [Environment]::GetEnvironmentVariable($v)) { $problems += "$v is unset" }
+          }
+          if ($env:Platform -ne 'x64') { $problems += "Platform=$env:Platform, want x64" }
+          if ($env:VCToolsVersion -notlike '14.44*') { $problems += "toolset=$env:VCToolsVersion" }
+          foreach ($tool in @('cl', 'msbuild', 'link')) {
+            if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { $problems += "$tool not on PATH" }
+          }
+          if ($problems.Count) {
+            Write-Host "::error::preconditions unmet: $($problems -join '; ')"
+            exit 1
+          }
+          Write-Host "all preconditions satisfied"
+
+      # gyp resolves the Visual Studio install from these; the failure that
+      # broke the build was gyp raising 'Could not locate Visual Studio'.
+      - name: Prove gyp can locate Visual Studio
+        shell: pwsh
+        run: |
+          $gyp = "${{ github.workspace }}\ThirdParty\gyp"
+          if (-not (Test-Path $gyp)) {
+            Write-Host "ThirdParty/gyp is not prepared yet; skipping the gyp check"
+            exit 0
+          }
+          $env:PYTHONPATH = $gyp
+          $code = 'import gyp.MSVSVersion as m; print("gyp VS:", m.SelectVisualStudioVersion(visual_studio_version=None))'
+          python -c $code
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::gyp could not locate Visual Studio"; exit 1 }
+          Write-Host "gyp located Visual Studio"
+
+      # The decisive check: run the real prepare script and let it reach the
+      # breakpad stage, which is the one that failed.
+      - name: Run prepare.py up to breakpad
+        shell: pwsh
+        run: |
+          $log = "$env:RUNNER_TEMP\prepare.log"
+          $err = "$env:RUNNER_TEMP\prepare.err"
+          $p = Start-Process -FilePath "cmd.exe" `
+            -ArgumentList '/c', 'cd /d "${{ github.workspace }}" && Telegram\build\prepare\win.bat' `
+            -RedirectStandardOutput $log -RedirectStandardError $err `
+            -NoNewWindow -PassThru
+          $deadline = (Get-Date).AddMinutes(30)
+          $sawBreakpad = $false
+          while (-not $p.HasExited -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 20
+            if (Test-Path $log) {
+              $text = Get-Content $log -Raw -ErrorAction SilentlyContinue
+              if ($text -match 'Libraries/breakpad') { $sawBreakpad = $true; break }
+              if ($text -match 'Could not locate Visual Studio') { break }
+            }
+          }
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 2
+          $text = ""
+          foreach ($f in @($log, $err)) {
+            if (Test-Path $f) { $text += (Get-Content $f -Raw -ErrorAction SilentlyContinue) }
+          }
+          $tail = (($text -split "`n") | Select-Object -Last 20) -join "`n"
+          Write-Host "=== tail of prepare output ==="
+          Write-Host $tail
+          if ($text -match 'Could not locate Visual Studio') {
+            Write-Host "::error::gyp still cannot locate Visual Studio"
+            exit 1
+          }
+          if ($text -match 'Native Tools Command Prompt') {
+            Write-Host "::error::prepare.py rejected the environment"
+            exit 1
+          }
+          if ($sawBreakpad) {
+            Write-Host "prepare.py reached the breakpad stage without a VS lookup error"
+          } else {
+            Write-Host "prepare.py did not reach breakpad within the window; no VS error seen"
+          }
