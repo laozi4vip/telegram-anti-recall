@@ -64,6 +64,8 @@ jobs:
           choco install -y ninja 7zip.install InnoSetup --no-progress
 
       # Building the 34 third-party libraries takes over an hour, so cache them.
+      # prepare.py installs into the parent of the checkout (its rootDir is
+      # scriptPath/../../../..), so the paths must climb one level up.
       # The key tracks the app version only: keying on prepare.py would drop the
       # cache every time the build script itself is adjusted.
       - name: Restore prepared libraries
@@ -71,8 +73,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: |
-            Libraries
-            ThirdParty
+            ../Libraries
+            ../ThirdParty
           key: libs-${{ runner.os }}-${{ hashFiles('Telegram/build/version') }}
           restore-keys: |
             libs-${{ runner.os }}-
@@ -92,8 +94,8 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: |
-            Libraries
-            ThirdParty
+            ../Libraries
+            ../ThirdParty
           key: libs-${{ runner.os }}-${{ hashFiles('Telegram/build/version') }}
 
       - name: Configure
