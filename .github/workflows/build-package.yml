@@ -25,7 +25,8 @@ jobs:
       # AyuGram targets Windows 7, which the newest v145 toolset no longer
       # supports. Pin the v143 toolset's 14.44 compiler, which still does.
       # windows-2022 ships v143, so this resolves to an installed toolset.
-      # vcvars is used directly because the setup action still runs on node20.
+      # vcvars is used directly because the setup action still runs on node20;
+      # prepare.py also needs Platform, which only the action used to set.
       - name: Setup MSVC (Windows 7 compatible toolset)
         id: msvc1444
         shell: cmd
@@ -33,6 +34,7 @@ jobs:
         run: |
           call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" -vcvars_ver=14.44
           if errorlevel 1 exit /b 1
+          echo Platform=x64>>%GITHUB_ENV%
           echo PATH=%PATH%>>%GITHUB_ENV%
           echo INCLUDE=%INCLUDE%>>%GITHUB_ENV%
           echo LIB=%LIB%>>%GITHUB_ENV%
@@ -48,6 +50,7 @@ jobs:
         run: |
           call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           if errorlevel 1 exit /b 1
+          echo Platform=x64>>%GITHUB_ENV%
           echo PATH=%PATH%>>%GITHUB_ENV%
           echo INCLUDE=%INCLUDE%>>%GITHUB_ENV%
           echo LIB=%LIB%>>%GITHUB_ENV%
