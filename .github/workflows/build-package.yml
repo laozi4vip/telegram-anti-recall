@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 540
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 0
@@ -53,7 +53,7 @@ jobs:
           cl 2>&1 | Select-Object -First 3
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -65,16 +65,24 @@ jobs:
 
       # Building the 34 third-party libraries takes over an hour, so cache them.
       # prepare.py installs into the parent of the checkout (its rootDir is
-      # scriptPath/../../../..), so the paths must climb one level up.
+      # scriptPath/../../../..). The action rejects that location unless the
+      # paths are normalized absolute ones, so resolve them first.
       # The key tracks the app version only: keying on prepare.py would drop the
       # cache every time the build script itself is adjusted.
+      - name: Resolve library paths
+        shell: pwsh
+        run: |
+          $parent = Split-Path "${{ github.workspace }}" -Parent
+          "LIBS_DIR=$parent\Libraries" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "THIRD_DIR=$parent\ThirdParty" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Restore prepared libraries
         id: libs-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
-            ../Libraries
-            ../ThirdParty
+            ${{ env.LIBS_DIR }}
+            ${{ env.THIRD_DIR }}
           key: libs-${{ runner.os }}-${{ hashFiles('Telegram/build/version') }}
           restore-keys: |
             libs-${{ runner.os }}-
@@ -91,11 +99,11 @@ jobs:
       # fails, which is exactly when the libraries are still worth keeping.
       - name: Save prepared libraries
         if: steps.libs-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
-            ../Libraries
-            ../ThirdParty
+            ${{ env.LIBS_DIR }}
+            ${{ env.THIRD_DIR }}
           key: libs-${{ runner.os }}-${{ hashFiles('Telegram/build/version') }}
 
       - name: Configure
@@ -347,7 +355,7 @@ jobs:
       # never lost to an installer problem.
       - name: Upload portable zip
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AyuGram-anti-recall-portable-win64
           path: ${{ github.workspace }}\out\package\*.zip
@@ -355,7 +363,7 @@ jobs:
 
       - name: Upload installer
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AyuGram-anti-recall-installer-win64
           path: ${{ github.workspace }}\out\package\ayu-anti-recall-setup-x64*.exe
@@ -363,7 +371,7 @@ jobs:
 
       - name: Upload unpacked build
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AyuGram-anti-recall-unpacked-win64
           path: ${{ github.workspace }}\out\package\AyuGram\**
